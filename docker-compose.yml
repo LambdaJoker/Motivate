@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000" # 将容器的3000端口映射到主机的3000端口
+    environment:
+      - DATABASE_HOST=mysql
+      - DATABASE_USER=root
+      - DATABASE_PASSWORD=secret
+      - DATABASE_NAME=travel_planner
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - mysql
+      - redis
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules # 排除 node_modules 以使用容器内的依赖
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3307:3306" # 映射到主机的3307以避免与本地MySQL冲突
+    environment:
+      MYSQL_ROOT_PASSWORD: secret
+      MYSQL_DATABASE: travel_planner
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:6.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  mysql_data:
+  redis_data: 
