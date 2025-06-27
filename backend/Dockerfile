@@ -3,20 +3,16 @@
 # Base image
 FROM node:18-alpine
 
-# Create app directory
+# Set working directory
 WORKDIR /usr/src/app
 
-# A wildcard is used to ensure both package.json AND package-lock.json are copied
+# Copy package files and install dependencies
 COPY package*.json ./
-
-# Install app dependencies
 RUN npm install
 
-# Bundle app source
+# Copy the rest of the application source code
 COPY . .
 
-# Creates a "dist" folder with the production build
-RUN npm run build
-
-# Start the server
-CMD [ "node", "dist/main" ] 
+# The CMD should run the app in development mode for hot-reloading.
+# The production build step will be handled by a multi-stage build later if needed.
+CMD ["npm", "run", "start:dev"] 
