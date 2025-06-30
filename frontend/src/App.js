@@ -1,112 +1,83 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+/*
+ * @Author: taotaozi-pro 2667534364@qq.com
+ * @Date: 2025-06-25 17:34:24
+ * @LastEditors: taotaozi-pro 2667534364@qq.com
+ * @LastEditTime: 2025-06-30 09:23:05
+ * @FilePath: \Motivate\frontend\src\App.js
+ * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
+ */
+import React, { useEffect, useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ConfigProvider, Layout, message } from 'antd';
+import zhCN from 'antd/locale/zh_CN';
 import './App.css';
 
-const styles = {
-  container: {
-    padding: '20px',
-    fontFamily: 'Arial, sans-serif',
-  },
-  title: {
-    textAlign: 'center',
-    color: '#333',
-  },
-  searchContainer: {
-    display: 'flex',
-    justifyContent: 'center',
-    marginBottom: '20px',
-  },
-  input: {
-    width: '300px',
-    padding: '10px',
-    fontSize: '16px',
-    border: '1px solid #ccc',
-    borderRadius: '4px 0 0 4px',
-  },
-  button: {
-    padding: '10px 20px',
-    fontSize: '16px',
-    border: '1px solid #007BFF',
-    backgroundColor: '#007BFF',
-    color: 'white',
-    cursor: 'pointer',
-    borderRadius: '0 4px 4px 0',
-  },
-  resultsContainer: {
-    marginTop: '20px',
-  },
-  resultItem: {
-    border: '1px solid #eee',
-    padding: '10px',
-    marginBottom: '10px',
-    borderRadius: '4px',
-    backgroundColor: '#f9f9f9',
-  },
-  error: {
-    color: 'red',
-    textAlign: 'center',
-  }
-};
+// Pages
+import GenerateItineraryPage from './pages/GenerateItineraryPage';
+import ItineraryDetailPage from './pages/ItineraryDetailPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+
+// Components
+import AppHeader from './components/AppHeader';
+import ProtectedRoute from './components/ProtectedRoute';
+
+const { Content, Footer } = Layout;
 
 function App() {
-  const [keywords, setKeywords] = useState('天安门');
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
 
-  const handleSearch = async () => {
-    if (!keywords) {
-      setError('请输入关键词');
-      return;
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setIsAuthenticated(!!localStorage.getItem('token'));
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    if (!process.env.REACT_APP_AMAP_KEY) {
+      message.warning('未设置高德地图API密钥，地图功能可能无法正常使用');
     }
-    setLoading(true);
-    setError('');
-    setResults([]);
-
-    try {
-      // The "proxy" in package.json will prepend "http://localhost:3000"
-      const response = await axios.get(`/api/amap/search?keywords=${keywords}`);
-      if (response.data && response.data.status === '1' && response.data.pois) {
-        setResults(response.data.pois);
-      } else {
-        setError(response.data.info || '未能找到结果');
-      }
-    } catch (err) {
-      console.error('搜索出错:', err);
-      setError('请求后端服务失败，请确保后端服务已启动。');
-    } finally {
-      setLoading(false);
-    }
-  };
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   return (
-    <div style={styles.container}>
-      <h1 style={styles.title}>核心技术验证 (Spike)</h1>
-      <div style={styles.searchContainer}>
-        <input
-          type="text"
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-          placeholder="输入关键词进行搜索"
-          style={styles.input}
-        />
-        <button onClick={handleSearch} disabled={loading} style={styles.button}>
-          {loading ? '搜索中...' : '搜索'}
-        </button>
-      </div>
+    <ConfigProvider locale={zhCN} theme={{
+      token: {
+        colorPrimary: '#1890ff',
+        borderRadius: 6,
+      },
+    }}>
+      <Router>
+        <Layout className="app-layout">
+          <AppHeader isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} />
+          <Content className="app-content">
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
+              <Route path="/register" element={<RegisterPage />} />
 
-      {error && <p style={styles.error}>{error}</p>}
-
-      <div style={styles.resultsContainer}>
-        {results.map((poi) => (
-          <div key={poi.id} style={styles.resultItem}>
-            <h4>{poi.name}</h4>
-            <p>地址: {poi.address}</p>
-            <p>类型: {poi.type}</p>
-          </div>
-        ))}
-      </div>
-    </div>
+              {/* Protected Routes */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/generate" element={<GenerateItineraryPage />} />
+                <Route path="/itinerary/:id" element={<ItineraryDetailPage />} />
+              </Route>
+              
+              {/* Redirect root path */}
+              <Route 
+                path="/" 
+                element={<Navigate replace to={isAuthenticated ? "/generate" : "/login"} />} 
+              />
+            </Routes>
+          </Content>
+          <Footer style={{ textAlign: 'center' }}>
+            旅行攻略规划 ©{new Date().getFullYear()} 为爱而创
+          </Footer>
+        </Layout>
+      </Router>
+    </ConfigProvider>
   );
 }
 

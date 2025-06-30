@@ -14,6 +14,7 @@ import { HttpModule } from '@nestjs/axios';
 @Module({
   imports: [HttpModule],
   controllers: [AmapController],
-  providers: [AmapService]
+  providers: [AmapService],
+  exports: [AmapService]
 })
 export class AmapModule {}

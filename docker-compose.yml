@@ -6,6 +6,7 @@ services:
     ports:
       - "3000:3000" # 将容器的3000端口映射到主机的3000端口
     environment:
+      - DATABASE_URL=mysql://root:secret@mysql:3306/travel_planner
       - DATABASE_HOST=mysql
       - DATABASE_USER=root
       - DATABASE_PASSWORD=secret
