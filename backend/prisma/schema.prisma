@@ -31,6 +31,7 @@ model Itinerary {
   description String?
   startDate   DateTime?
   endDate     DateTime?
+  totalEstimatedCost Decimal?   @default(0)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -46,18 +47,23 @@ enum TransportMode {
 
 model PlanItem {
   id              Int           @id @default(autoincrement())
+  itinerary       Itinerary     @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
   itineraryId     Int
+  title           String
+  description     String?
   planDate        DateTime
   orderIndex      Int
   locationName    String
   amapPoiId       String?
-  latitude        Decimal
-  longitude       Decimal
+  latitude        Decimal       @db.Decimal(10, 8)
+  longitude       Decimal       @db.Decimal(10, 7)
   startTime       DateTime?
+  endTime         DateTime?
   durationMinutes Int?
-  transportMode   TransportMode @default(driving)
+  itemType        String?
+  transportMode   TransportMode?
   notes           String?
+  estimatedCost   Decimal?      @db.Decimal(10, 2)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
-  itinerary       Itinerary     @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
 }

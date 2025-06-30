@@ -40,7 +40,7 @@ export class AmapService {
     const url = `${this.amapApiBase}/place/text`;
     const { data } = await firstValueFrom(
       this.httpService.get(url, {
-        params: { key: this.amapKey, keywords, city, citylimit: true },
+        params: { key: this.amapKey, keywords, city, citylimit: true, show_fields: 'biz_ext' },
       }),
     );
     return data;
@@ -195,6 +195,7 @@ export class AmapService {
             radius: 1000,
             sortrule: 'rating',
             page_size: 1,
+            show_fields: 'biz_ext'
           },
         }),
       );
@@ -235,6 +236,44 @@ export class AmapService {
     } catch (error) {
       this.logger.error(`Failed to get route duration for mode ${mode}`, error);
       return 30;
+    }
+  }
+
+  async getIntercityRouteDetails(origin: string, destination: string): Promise<{ duration: number; distance: number; cost: number }> {
+    const url = `${this.amapApiV5Base}/direction/driving`;
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get(url, {
+          params: {
+            key: this.amapKey,
+            origin,
+            destination,
+            show_fields: 'cost', // Request cost details
+          },
+        }),
+      );
+
+      if (data && data.status === '1' && data.route && data.route.paths && data.route.paths.length > 0) {
+        const path = data.route.paths[0];
+        const duration = Math.ceil(parseInt(path.duration, 10) / 60); // in minutes
+        const distance = Math.ceil(parseInt(path.distance, 10) / 1000); // in km
+
+        const tollCost = path.cost?.tolls ? parseFloat(path.cost.tolls) : 0;
+        
+        // 简单估算燃油费：假设 0.6 元/公里
+        const fuelCost = distance * 0.6;
+        
+        const totalCost = Math.ceil(tollCost + fuelCost);
+
+        return { duration, distance, cost: totalCost };
+      }
+      // 如果API调用失败或未返回路径，则返回默认值
+      this.logger.warn(`Could not fetch intercity route details for ${origin} -> ${destination}. Returning default values.`);
+      return { duration: 180, distance: 300, cost: 200 };
+    } catch (error) {
+      this.logger.error(`Failed to get intercity route details`, error);
+      // 发生错误时返回默认值
+      return { duration: 180, distance: 300, cost: 200 };
     }
   }
 }

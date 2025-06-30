@@ -141,6 +141,14 @@ const GenerateItineraryPage = () => {
               >
                 <InputNumber min={1} max={30} style={{ width: '100%' }} />
               </Form.Item>
+
+              <Form.Item
+                label="人均预算(元)"
+                name="budget"
+                style={{ width: '100%' }}
+              >
+                <InputNumber min={0} style={{ width: '100%' }} formatter={value => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={value => (value || '').replace(/¥\s?|(,*)/g, '')} />
+              </Form.Item>
             </Space>
             
             <Form.Item

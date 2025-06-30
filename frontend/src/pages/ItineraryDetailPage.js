@@ -3,13 +3,14 @@ import { useParams } from 'react-router-dom';
 import { 
   Card, Typography, Tabs, Spin, Row, Col, Button, 
   message, Divider, Modal, Descriptions, Badge, Tooltip,
-  Timeline, Empty, Tag, Space
+  Timeline, Empty, Tag, Space, Statistic
 } from 'antd';
 import { 
   CalendarOutlined, EnvironmentOutlined, CloudOutlined,
-  CarOutlined, QrcodeOutlined, LinkOutlined
+  CarOutlined, QrcodeOutlined, LinkOutlined, WalletOutlined,
+  CheckCircleOutlined
 } from '@ant-design/icons';
-import { format, addDays } from 'date-fns';
+import { format, addDays, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import AMap from '../components/AMap';
 import ScenicSpotCard from '../components/ScenicSpotCard';
@@ -123,6 +124,8 @@ const ItineraryDetailPage = () => {
             duration: path.duration
           });
         }
+      } else {
+        setRouteData(null); // 如果没有路径数据，确保清除旧的路线
       }
     } catch (error) {
       console.error('获取路线规划失败:', error);
@@ -250,77 +253,31 @@ const ItineraryDetailPage = () => {
     ).sort((a, b) => a.orderIndex - b.orderIndex);
     
     if (dateItems.length === 0) {
-      return (
-        <Empty description="当天没有行程安排" />
-      );
+      return <Empty description="当天没有安排行程" />;
     }
     
     return (
-      <Row gutter={[24, 24]}>
-        <Col xs={24} md={12}>
-          <Timeline mode="left">
-            {dateItems.map((item, index) => (
-              <Timeline.Item 
-                key={item.id}
-                color={index === 0 ? 'green' : index === dateItems.length - 1 ? 'red' : 'blue'}
-                label={item.startTime ? format(new Date(item.startTime), 'HH:mm', { locale: zhCN }) : ''}
-              >
-                <div style={{ marginBottom: 8 }}>
-                  <Text strong>{item.locationName}</Text>
-                  {item.durationMinutes && (
-                    <Tag color="blue" style={{ marginLeft: 8 }}>
-                      {Math.floor(item.durationMinutes / 60)}小时
-                      {item.durationMinutes % 60 > 0 ? `${item.durationMinutes % 60}分钟` : ''}
-                    </Tag>
-                  )}
-                </div>
-                {item.notes && <Paragraph>{item.notes}</Paragraph>}
-              </Timeline.Item>
-            ))}
-          </Timeline>
-          
-          {/* 天气信息 */}
-          {weatherData && weatherData.forecasts && weatherData.forecasts[0] && (
-            <Card 
-              title={
-                <span>
-                  <CloudOutlined /> 天气预报
-                </span>
-              }
+      <Timeline>
+        {dateItems.map(item => (
+          <Timeline.Item key={item.id}>
+            <p><strong>{format(parseISO(item.startTime), 'HH:mm')} - {item.title}</strong></p>
+            {item.description && <Text type="secondary">{item.description}</Text>}
+            <br/>
+            {item.estimatedCost > 0 && (
+              <Tag icon={<WalletOutlined />} color="gold">
+                预估花费: ¥{item.estimatedCost}
+              </Tag>
+            )}
+            <Button 
+              type="link" 
               size="small"
-              style={{ marginTop: 24 }}
+              onClick={() => handleNavigate(item)}
             >
-              <Descriptions column={1} size="small">
-                <Descriptions.Item label="地区">
-                  {weatherData.forecasts[0].city}
-                </Descriptions.Item>
-                <Descriptions.Item label="天气">
-                  {weatherData.forecasts[0].casts && weatherData.forecasts[0].casts[0]?.dayweather}
-                </Descriptions.Item>
-                <Descriptions.Item label="温度">
-                  {weatherData.forecasts[0].casts && `${weatherData.forecasts[0].casts[0]?.nighttemp}°C ~ ${weatherData.forecasts[0].casts[0]?.daytemp}°C`}
-                </Descriptions.Item>
-                <Descriptions.Item label="风力">
-                  {weatherData.forecasts[0].casts && `${weatherData.forecasts[0].casts[0]?.daywind}风 ${weatherData.forecasts[0].casts[0]?.daypower}级`}
-                </Descriptions.Item>
-              </Descriptions>
-            </Card>
-          )}
-        </Col>
-        
-        <Col xs={24} md={12}>
-          <div style={{ marginBottom: 16 }}>
-            {dateItems.map((item) => (
-              <ScenicSpotCard 
-                key={item.id}
-                planItem={item}
-                onNavigate={handleNavigate}
-                onViewDetail={handleViewDetail}
-              />
-            ))}
-          </div>
-        </Col>
-      </Row>
+              导航
+            </Button>
+          </Timeline.Item>
+        ))}
+      </Timeline>
     );
   };
   
@@ -361,57 +318,52 @@ const ItineraryDetailPage = () => {
     if (!itinerary) return null;
     
     return (
-      <Card bordered={false} style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ marginBottom: 8 }}>
-          {itinerary.title}
-        </Title>
-        
-        <div style={{ marginBottom: 16 }}>
-          <Space>
-            <Tag icon={<CalendarOutlined />} color="blue">
-              {format(new Date(itinerary.startDate), 'yyyy年MM月dd日', { locale: zhCN })}
-              &nbsp;-&nbsp;
-              {format(new Date(itinerary.endDate), 'yyyy年MM月dd日', { locale: zhCN })}
-            </Tag>
-            {itinerary.planItems && itinerary.planItems.length > 0 && (
-              <Tag icon={<EnvironmentOutlined />} color="orange">
-                {itinerary.planItems[0].locationName.split(' ')[0]}
-              </Tag>
-            )}
-            <Tag icon={<CarOutlined />} color="green">
-              景点间打车前往
-            </Tag>
-          </Space>
-        </div>
-        
-        {itinerary.description && (
-          <Paragraph>{itinerary.description}</Paragraph>
+      <Card 
+        style={{ marginBottom: 24, borderRadius: 16 }}
+        bodyStyle={{ paddingTop: 16, paddingBottom: 16 }}
+      >
+        <Row justify="space-between" align="middle">
+          <Col>
+            <Title level={2} style={{ margin: 0 }}>
+              <EnvironmentOutlined /> {itinerary.title}
+            </Title>
+            <Text type="secondary">
+              <CalendarOutlined style={{ marginRight: 8 }} />
+              {format(parseISO(itinerary.startDate), 'yyyy-MM-dd')} 至 {format(parseISO(itinerary.endDate), 'yyyy-MM-dd')}
+            </Text>
+          </Col>
+          <Col>
+            <Space size="large">
+              <Button icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink}>
+                分享到高德地图
+              </Button>
+              <Button type="primary" icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading}>
+                天气预报
+              </Button>
+            </Space>
+          </Col>
+        </Row>
+        {itinerary.budget > 0 && (
+          <>
+            <Divider style={{ marginTop: 16, marginBottom: 16 }} />
+            <Row gutter={16}>
+              <Col span={8}>
+                <Statistic title="人均预算" value={itinerary.budget} prefix="¥" />
+              </Col>
+              <Col span={8}>
+                <Statistic title="预估总花费" value={itinerary.estimatedCost} prefix="¥" />
+              </Col>
+              <Col span={8}>
+                <Statistic 
+                  title="预算充足" 
+                  value={itinerary.budget >= itinerary.estimatedCost ? '是' : '否'} 
+                  valueStyle={{ color: itinerary.budget >= itinerary.estimatedCost ? '#3f8600' : '#cf1322' }}
+                  prefix={itinerary.budget >= itinerary.estimatedCost ? <CheckCircleOutlined /> : <WalletOutlined />}
+                />
+              </Col>
+            </Row>
+          </>
         )}
-        
-        <Divider />
-        
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <Button 
-            type="primary" 
-            icon={<LinkOutlined />}
-            onClick={() => {
-              if (amapLink) {
-                window.open(amapLink, '_blank');
-              } else {
-                message.info('正在生成高德地图链接，请稍候再试');
-              }
-            }}
-          >
-            在高德地图中查看
-          </Button>
-          
-          <Button 
-            icon={<QrcodeOutlined />}
-            onClick={() => setQrModalVisible(true)}
-          >
-            生成分享码
-          </Button>
-        </div>
       </Card>
     );
   };

@@ -6,10 +6,18 @@
  * @FilePath: \Motivate\backend\src\itinerary\dto\create-plan-item.dto.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
-import { IsString, IsNotEmpty, IsOptional, IsDateString, IsNumber, IsEnum, IsDecimal } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsDateString, IsNumber, IsEnum, IsDecimal, IsLatitude, IsLongitude } from 'class-validator';
 import { TransportMode } from '@prisma/client';
 
 export class CreatePlanItemDto {
+  @IsString()
+  @IsNotEmpty()
+  title: string;
+
+  @IsString()
+  @IsOptional()
+  description?: string;
+  
   @IsDateString()
   @IsNotEmpty()
   planDate: string;
@@ -22,21 +30,33 @@ export class CreatePlanItemDto {
   @IsOptional()
   amapPoiId?: string;
 
-  @IsDecimal()
+  @IsLatitude()
   @IsNotEmpty()
-  latitude: number;
+  latitude: number | string;
 
-  @IsDecimal()
+  @IsLongitude()
   @IsNotEmpty()
-  longitude: number;
+  longitude: number | string;
 
   @IsDateString()
   @IsOptional()
   startTime?: string;
 
+  @IsDateString()
+  @IsOptional()
+  endTime?: string;
+
   @IsNumber()
   @IsOptional()
   durationMinutes?: number;
+
+  @IsString()
+  @IsOptional()
+  itemType?: string;
+
+  @IsNumber()
+  @IsOptional()
+  estimatedCost?: number;
 
   @IsEnum(TransportMode)
   @IsOptional()

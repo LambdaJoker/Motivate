@@ -1,5 +1,7 @@
-import { IsString, IsNotEmpty, IsOptional, IsDateString, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsDateString, IsArray, IsNumber } from 'class-validator';
 import { CreatePlanItemDto } from './create-plan-item.dto';
+import { Type } from 'class-transformer';
+import { ValidateNested } from 'class-validator';
 
 export class CreateItineraryDto {
   @IsString()
@@ -18,7 +20,17 @@ export class CreateItineraryDto {
   @IsNotEmpty()
   endDate: string;
 
-  @IsArray()
   @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreatePlanItemDto)
   planItems?: CreatePlanItemDto[];
+
+  @IsNumber()
+  @IsOptional()
+  budget?: number;
+
+  @IsNumber()
+  @IsOptional()
+  estimatedCost?: number;
 } 
