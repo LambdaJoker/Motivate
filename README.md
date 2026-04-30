@@ -1,127 +1,122 @@
-# 旅行攻略规划网站
+# 旅行攻略智能规划网站 (Motivate)
 
-基于NestJS和React的旅行攻略规划网站，集成了高德地图API，帮助用户规划最佳旅行路线。
+基于 NestJS 和 React 构建的智能旅行攻略规划网站。本项目深度集成了大语言模型（DeepSeek/MiniMax）和高德地图 API，能够根据用户的预算、天数、偏好一键生成包含详细时间、地点和预估花费的行程，并在地图上提供完美的交互式可视化体验。
 
 ## 技术栈
 
 ### 后端
-- NestJS - Node.js框架
-- PostgreSQL - 数据库
-- Prisma - ORM工具
-- JWT - 用户认证
-- 高德地图API - 地理信息服务
+- **框架**: NestJS (Node.js)
+- **数据库**: MySQL 8.0+
+- **ORM**: Prisma
+- **认证**: JWT (JSON Web Token)
+- **AI 引擎**: OpenAI SDK (兼容 DeepSeek/MiniMax，支持 Function Calling)
+- **地理服务**: 高德地图 Web API
 
 ### 前端
-- React - 用户界面库
-- Ant Design - UI组件库
-- Axios - HTTP客户端
-- React Router - 路由管理
+- **框架**: React (v18+)
+- **UI 组件库**: Ant Design v5
+- **地图组件**: `@amap/amap-jsapi-loader` (高德地图 JS API 2.0)
+- **时间处理**: date-fns
+- **HTTP客户端**: Axios
 
-## 功能特性
+## 核心功能特性
 
-- 用户注册和登录
-- 创建和管理旅行计划
-- 添加计划项目（景点、餐厅、酒店等）
-- 根据地点和日期优化旅行路线
-- 查看路线地图和导航
-- 获取目的地天气信息
+- 🔐 **用户系统**: 完整的注册和登录功能，个人行程数据云端保存。
+- 🤖 **AI 智能一键规划**: 输入出发地、目的地、天数和预算，AI 自动生成精确到每天每个时间段的详细行程（包含交通、景点、餐饮、住宿）。
+- 🌍 **高德地图深度联动**:
+  - AI 生成的景点自动转换为全国精确经纬度。
+  - 右侧地图自动绘制每日游览路线折线图。
+  - 点击左侧时间轴景点，右侧地图平滑缩放并高亮对应坐标。
+- 📱 **社交攻略自动抓取**: AI 在生成行程时会自动调用工具搜索小红书/抖音等平台的最新避坑指南和美食推荐。
+- 🔄 **就地重新规划**: 对生成的行程不满意？一键重置，保留原参数重新生成，告别数据冗余。
+- 🔗 **行程分享**: 一键生成带有高德地图导航链接的二维码，方便手机扫码查看。
 
-## 安装指南
+## 本地开发指南
 
 ### 前提条件
 
-- Node.js 14.x或更高版本
-- PostgreSQL 12.x或更高版本
-- 高德地图开发者账号和API密钥
+- Node.js 18.x 或更高版本
+- MySQL 8.0+ 数据库
+- [高德地图开发者账号](https://console.amap.com/dev/key/app) (需申请 Web 服务 API Key 和 Web 端 JS API Key)
+- 大语言模型 API Key (推荐使用 DeepSeek 或 MiniMax)
 
-### 安装步骤
+### 安装与启动步骤
 
-1. 克隆仓库：
+1. **克隆仓库**：
+   ```bash
+   git clone <仓库地址>
+   cd Motivate
+   ```
 
-```bash
-git clone <仓库地址>
-cd travel-planner
-```
+2. **后端配置与启动**：
+   进入 `backend` 目录，安装依赖：
+   ```bash
+   cd backend
+   npm install
+   ```
+   
+   在 `backend` 根目录下创建 `.env` 文件，填入以下配置：
+   ```env
+   # 数据库配置 (Prisma)
+   DATABASE_URL="mysql://用户名:密码@localhost:3306/motivate_db"
 
-2. 运行安装脚本：
+   # JWT 认证
+   JWT_SECRET="你的超强随机字符串密钥"
 
-Windows:
-```
-setup.bat
-```
+   # 高德地图配置 (Web服务 API Key)
+   AMAP_KEY="你的高德地图_Web服务_API密钥"
 
-Linux/Mac:
-```
-chmod +x setup.sh
-./setup.sh
-```
+   # 大模型配置 (以 MiniMax 为例)
+   LLM_API_KEY="你的大模型API密钥"
+   LLM_BASE_URL="https://api.minimaxi.com/v1"
+   LLM_MODEL_NAME="MiniMax-M2.5"
+   ```
 
-3. 配置环境变量：
+   同步数据库结构并启动后端：
+   ```bash
+   npx prisma db push
+   npm run start:dev
+   ```
+   *(后端默认运行在 `http://localhost:3001`)*
 
-编辑`backend/.env`文件，填入你的数据库连接信息和高德地图API密钥：
+3. **前端配置与启动**：
+   新开一个终端，进入 `frontend` 目录，安装依赖：
+   ```bash
+   cd frontend
+   npm install
+   ```
 
-```
-DATABASE_URL="postgresql://用户名:密码@localhost:5432/travel_planner"
-JWT_SECRET="你的JWT密钥"
-AMAP_KEY="你的高德地图API密钥"
-AMAP_SECRET="你的高德地图API密钥密钥"
-```
+   在 `frontend` 根目录下创建 `.env` 文件，填入以下配置：
+   ```env
+   REACT_APP_API_URL=http://localhost:3001
+   REACT_APP_AMAP_KEY=你的高德地图_Web端_JS_API密钥
+   REACT_APP_AMAP_SECURITY_CODE=你的高德地图_安全密钥
+   ```
 
-4. 启动应用：
-
-后端：
-```bash
-cd backend
-npm run start:dev
-```
-
-前端：
-```bash
-cd frontend
-npm run dev
-```
-
-5. 访问应用：
-
-打开浏览器访问：http://localhost:3000
+   启动前端开发服务器：
+   ```bash
+   npm start
+   ```
+   *(前端默认运行在 `http://localhost:3000`)*
 
 ## 使用说明
 
-### 用户注册/登录
+1. 访问 `http://localhost:3000` 并注册一个新账号。
+2. 登录后，点击导航栏的 **"生成行程"**。
+3. 填写出发地（如"南昌"）、目的地（如"五台山"）、天数、预算（如"6000"）以及必去景点。
+4. 点击生成，等待 AI 大脑飞速运转（期间会在后台抓取攻略）。
+5. 生成完毕后，进入详情页。左侧为可折叠的详细时间轴，右侧为路线地图。
+6. 点击时间轴上的卡片，地图将自动为你拉近视角。
 
-1. 访问登录页面
-2. 新用户点击注册按钮创建账号
-3. 使用用户名和密码登录
+## 常见问题 (FAQ)
 
-### 创建旅行计划
+- **地图显示空白或报错 "Script error"？**
+  请检查 `frontend/.env` 中的 `REACT_APP_AMAP_KEY` 和 `REACT_APP_AMAP_SECURITY_CODE` 是否配置正确，并且是在高德控制台申请的 **Web端(JS API)** 密钥，而非 Web 服务密钥。
 
-1. 登录后点击"新建旅行计划"
-2. 填写目的地、开始日期和结束日期
-3. 点击保存
+- **生成行程时提示 "大模型生成行程失败"？**
+  1. 请检查 `backend/.env` 中的 `LLM_API_KEY` 是否有效且有余额。
+  2. 观察后端控制台日志，查看 `RAW LLM OUTPUT` 是否提示并发限制或模型名称配置错误。
 
-### 添加计划项
+## 贡献指南
 
-1. 在行程详情页点击"添加计划项"
-2. 搜索目的地（景点、餐厅、酒店等）
-3. 选择日期和时间
-4. 添加备注（可选）
-5. 点击保存
-
-### 查看路线规划
-
-1. 在行程详情页选择日期
-2. 系统会自动优化当天的行程路线
-3. 点击"查看地图"可在高德地图中查看路线
-
-## 演示账号
-
-可使用以下演示账号登录体验系统功能：
-
-- 用户名：demo
-- 密码：demo123
-
-## 文档
-
-- [API文档](docs/api.md)
-- [数据库设计](docs/database.md)
-- [高德地图API集成](docs/amap.md)
+欢迎提交 Pull Request 改进代码，或是开启 Issue 讨论新功能。在提交 PR 前，请确保代码通过了基本的 ESLint 检查。

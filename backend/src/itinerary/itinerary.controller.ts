@@ -36,8 +36,10 @@ export class ItineraryController {
   }
 
   @Get()
+  @Public() // 允许未登录获取列表
   findAllForUser(@GetUser() user: User) {
-    return this.itineraryService.findAllForUser(user.id);
+    const userId = user?.id || 1; // 添加临时用户ID支持
+    return this.itineraryService.findAllForUser(userId);
   }
 
   @Get('/:itineraryId')
@@ -49,11 +51,13 @@ export class ItineraryController {
   }
 
   @Get('/:itineraryId/full')
+  @Public() // 添加Public装饰器，临时支持免登录访问
   getItineraryWithPlanItems(
     @Param('itineraryId', ParseIntPipe) itineraryId: number,
     @GetUser() user: User,
   ) {
-    return this.itineraryService.getItineraryWithPlanItems(itineraryId, user.id);
+    const userId = user?.id || 1; // 临时解决方案：如果未登录使用默认用户ID
+    return this.itineraryService.getItineraryWithPlanItems(itineraryId, userId);
   }
 
   // 自动生成旅行攻略
@@ -68,6 +72,28 @@ export class ItineraryController {
     return this.itineraryService.generateItinerary(generateItineraryDto, userId);
   }
 
+  // 重新生成旅行攻略 (根据原参数)
+  @Post('/:itineraryId/regenerate')
+  @Public()
+  async regenerateItinerary(
+    @Param('itineraryId', ParseIntPipe) itineraryId: number,
+    @GetUser() user: User,
+  ) {
+    const userId = user?.id || 1;
+    
+    // 1. 获取原行程及参数
+    // 我们需要告诉 service 不要进行严格的用户权限校验（或者传入 checkAuth = false），因为 Public 路由可能没有真实 userId
+    const oldItinerary = await this.itineraryService.getItineraryById(itineraryId, userId, userId !== 1);
+    if (!oldItinerary.generationParams) {
+      throw new Error('The itinerary was not generated with parameters or parameters are lost.');
+    }
+    
+    const params: GenerateItineraryDto = JSON.parse(oldItinerary.generationParams);
+    
+    // 2. 使用原参数并传入 ID 以实现原地更新
+    return this.itineraryService.generateItinerary(params, userId, itineraryId);
+  }
+
   // Add a new PlanItem to an Itinerary
   @Post('/:itineraryId/plan-items')
   addPlanItem(
@@ -80,21 +106,36 @@ export class ItineraryController {
 
   // Get all PlanItems for a specific date in an Itinerary
   @Get('/:itineraryId/plan-items')
+  @Public() // 添加Public装饰器，临时支持免登录访问
   getPlanItemsForDate(
     @Param('itineraryId', ParseIntPipe) itineraryId: number,
     @GetUser() user: User,
     @Query('planDate') planDate: string,
   ) {
-    return this.itineraryService.getPlanItemsForDate(itineraryId, user.id, planDate);
+    const userId = user?.id || 1; // 临时解决方案：如果未登录使用默认用户ID
+    return this.itineraryService.getPlanItemsForDate(itineraryId, userId, planDate);
   }
 
   // Get the optimized route for a specific date
   @Get('/:itineraryId/route')
+  @Public() // 添加Public装饰器，临时支持免登录访问
   getRouteForDate(
     @Param('itineraryId', ParseIntPipe) itineraryId: number,
     @GetUser() user: User,
     @Query('planDate') planDate: string,
   ) {
-    return this.itineraryService.getRouteForDate(itineraryId, user.id, planDate);
+    const userId = user?.id || 1; // 临时解决方案：如果未登录使用默认用户ID
+    return this.itineraryService.getRouteForDate(itineraryId, userId, planDate);
+  }
+
+  // Delete an itinerary
+  @Post('/:itineraryId/delete')
+  @Public()
+  async deleteItinerary(
+    @Param('itineraryId', ParseIntPipe) itineraryId: number,
+    @GetUser() user: User,
+  ) {
+    const userId = user?.id || 1; // 临时解决方案：如果未登录使用默认用户ID
+    return this.itineraryService.deleteItinerary(itineraryId, userId);
   }
 }

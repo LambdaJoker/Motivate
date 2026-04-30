@@ -9,14 +9,12 @@
 @echo on
 
 REM 创建.env文件
-echo # 数据库连接 > .\backend\.env
-echo DATABASE_URL="postgresql://postgres:postgres@localhost:5432/travel_planner" >> .\backend\.env
-echo. >> .\backend\.env
-echo # JWT密钥 >> .\backend\.env
-echo JWT_SECRET="travel-planner-secret-key-123456" >> .\backend\.env
-echo. >> .\backend\.env
-echo # 高德地图API密钥 >> .\backend\.env
-echo AMAP_KEY="your-amap-key-here" >> .\backend\.env
+if not exist .\backend\.env (
+    copy .\backend\.env.example .\backend\.env
+    echo 已从 .env.example 创建 .env 文件
+) else (
+    echo .\backend\.env 已存在，跳过创建
+)
 
 REM 安装后端依赖
 cd backend
@@ -44,6 +42,6 @@ cd ..
 echo 安装完成！
 echo 使用以下命令启动应用：
 echo 后端: cd backend ^&^& npm run start:dev
-echo 前端: cd frontend ^&^& npm run dev
+echo 前端: cd frontend ^&^& npm start
 
 pause 

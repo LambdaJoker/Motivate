@@ -22,6 +22,7 @@ import { AmapModule } from './amap/amap.module';
 import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { ItineraryModule } from './itinerary/itinerary.module';
+import { LlmModule } from './llm/llm.module';
 import { JwtAuthGuard } from './auth/jwt/jwt-auth.guard';
 
 @Module({
@@ -32,6 +33,7 @@ import { JwtAuthGuard } from './auth/jwt/jwt-auth.guard';
     }),
     AmapModule,
     AuthModule,
+    LlmModule,
     ItineraryModule,
   ],
   controllers: [AppController],

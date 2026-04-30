@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Form, Input, DatePicker, InputNumber, Button, Select, 
-  Typography, Card, message, Space, Divider, List, Skeleton
+  Typography, Card, Space, Divider, List, Skeleton, Row, Col, App
 } from 'antd';
 import { 
   PlusOutlined, MinusCircleOutlined, 
-  EnvironmentOutlined, CalendarOutlined, RightOutlined
+  EnvironmentOutlined, CalendarOutlined, RightOutlined, DeleteOutlined, ExclamationCircleOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { itineraryApi } from '../services/api';
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
 
@@ -21,9 +21,11 @@ const GenerateItineraryPage = () => {
   const [itineraries, setItineraries] = useState([]);
   const [listLoading, setListLoading] = useState(true);
   const navigate = useNavigate();
+  const { message, modal } = App.useApp();
 
   useEffect(() => {
     fetchItineraries();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchItineraries = async () => {
@@ -36,6 +38,27 @@ const GenerateItineraryPage = () => {
     } finally {
       setListLoading(false);
     }
+  };
+
+  const handleDeleteItinerary = (id, title) => {
+    modal.confirm({
+      title: '确认删除',
+      icon: <ExclamationCircleOutlined style={{ color: '#DC2626' }} />,
+      content: `确定要删除行程 "${title}" 吗？此操作不可恢复。`,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await itineraryApi.deleteItinerary(id);
+          message.success('行程已成功删除');
+          fetchItineraries();
+        } catch (error) {
+          console.error('删除行程失败:', error);
+          message.error('删除行程失败，请重试');
+        }
+      },
+    });
   };
 
   // 生成旅行攻略
@@ -62,7 +85,6 @@ const GenerateItineraryPage = () => {
       message.success('旅行攻略生成成功！');
       
       navigate(`/itinerary/${result.id}`);
-      fetchItineraries();
     } catch (error) {
       console.error('生成旅行攻略失败:', error);
       const errorMessage = error.response?.data?.message || '生成攻略失败，请重试';
@@ -73,16 +95,17 @@ const GenerateItineraryPage = () => {
   };
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto', padding: '24px 16px', display: 'flex', gap: 24 }}>
-      {/* Left side: Form */}
-      <div style={{ flex: 1 }}>
-        <Card 
-          bordered={false} 
-          style={{ borderRadius: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)' }}
-        >
-          <Title level={2} style={{ textAlign: 'center', marginBottom: 32 }}>
-            <CalendarOutlined /> 智能生成旅行攻略
-          </Title>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
+      <Row gutter={[24, 24]}>
+        {/* Left side: Form */}
+        <Col xs={24} lg={14}>
+          <Card 
+            variant="borderless" 
+            style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', background: 'var(--card-bg)' }}
+          >
+            <Title level={2} style={{ textAlign: 'center', marginBottom: 32, fontWeight: 700, color: 'var(--text-main)' }}>
+              <CalendarOutlined style={{ color: 'var(--primary-color)' }} /> 智能生成旅行攻略
+            </Title>
           
           <Form
             form={form}
@@ -203,7 +226,7 @@ const GenerateItineraryPage = () => {
                       </Form.Item>
                       
                       {fields.length > 1 ? (
-                        <MinusCircleOutlined onClick={() => remove(name)} />
+                        <MinusCircleOutlined title="删除景点" aria-label="删除景点" onClick={() => remove(name)} />
                       ) : null}
                     </Space>
                   ))}
@@ -229,9 +252,11 @@ const GenerateItineraryPage = () => {
                 loading={loading}
                 style={{ 
                   width: '100%', 
-                  height: 45, 
+                  height: 48, 
                   fontSize: 16, 
-                  marginTop: 16 
+                  marginTop: 16,
+                  fontWeight: 600,
+                  borderRadius: 'var(--radius-md)'
                 }}
               >
                 生成旅行攻略
@@ -239,34 +264,39 @@ const GenerateItineraryPage = () => {
             </Form.Item>
           </Form>
         </Card>
-      </div>
+        </Col>
 
-      {/* Right side: List of itineraries */}
-      <div style={{ flex: 1 }}>
-        <Card
-          title="我创建的行程"
-          bordered={false}
-          style={{ borderRadius: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', height: '100%' }}
-        >
-          <Skeleton loading={listLoading} active avatar>
-            <List
-              itemLayout="horizontal"
-              dataSource={itineraries}
-              locale={{ emptyText: '您还没有创建任何行程' }}
-              renderItem={item => (
-                <List.Item
-                  actions={[<Button type="link" icon={<RightOutlined />} onClick={() => navigate(`/itinerary/${item.id}`)}>查看详情</Button>]}
-                >
-                  <List.Item.Meta
-                    title={<a onClick={() => navigate(`/itinerary/${item.id}`)}>{item.title}</a>}
-                    description={`${dayjs(item.startDate).format('YYYY-MM-DD')} - ${dayjs(item.endDate).format('YYYY-MM-DD')}`}
-                  />
-                </List.Item>
-              )}
-            />
-          </Skeleton>
-        </Card>
-      </div>
+        {/* Right side: List of itineraries */}
+        <Col xs={24} lg={10}>
+          <Card
+            title={<span style={{ fontWeight: 600, fontSize: '1.125rem' }}>我创建的行程</span>}
+            variant="borderless"
+            style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', height: '100%', background: 'var(--card-bg)' }}
+          >
+            <Skeleton loading={listLoading} active avatar>
+              <List
+                itemLayout="horizontal"
+                dataSource={itineraries}
+                locale={{ emptyText: '您还没有创建任何行程' }}
+                renderItem={item => (
+                  <List.Item
+                    actions={[
+                      <Button type="text" danger icon={<DeleteOutlined />} aria-label="删除行程" title="删除行程" onClick={() => handleDeleteItinerary(item.id, item.title)}></Button>,
+                      <Button type="link" style={{ fontWeight: 500 }} icon={<RightOutlined />} onClick={() => navigate(`/itinerary/${item.id}`)}>查看详情</Button>
+                    ]}
+                    style={{ padding: '16px 0', borderBottom: '1px solid var(--border-color)' }}
+                  >
+                    <List.Item.Meta
+                      title={<span style={{ cursor: 'pointer', color: 'var(--text-main)', fontWeight: 600, fontSize: '1rem', transition: 'color 0.2s' }} onClick={() => navigate(`/itinerary/${item.id}`)} onMouseOver={(e) => e.target.style.color = 'var(--primary-color)'} onMouseOut={(e) => e.target.style.color = 'var(--text-main)'}>{item.title}</span>}
+                      description={<span style={{ color: 'var(--text-secondary)' }}>{`${dayjs(item.startDate).format('YYYY-MM-DD')} - ${dayjs(item.endDate).format('YYYY-MM-DD')}`}</span>}
+                    />
+                  </List.Item>
+                )}
+              />
+            </Skeleton>
+          </Card>
+        </Col>
+      </Row>
     </div>
   );
 };

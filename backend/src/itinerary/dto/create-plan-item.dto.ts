@@ -30,11 +30,9 @@ export class CreatePlanItemDto {
   @IsOptional()
   amapPoiId?: string;
 
-  @IsLatitude()
   @IsNotEmpty()
   latitude: number | string;
 
-  @IsLongitude()
   @IsNotEmpty()
   longitude: number | string;
 

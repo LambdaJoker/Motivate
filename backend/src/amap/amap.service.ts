@@ -40,7 +40,8 @@ export class AmapService {
     const url = `${this.amapApiBase}/place/text`;
     const { data } = await firstValueFrom(
       this.httpService.get(url, {
-        params: { key: this.amapKey, keywords, city, citylimit: true, show_fields: 'biz_ext' },
+        // 移除 citylimit: true，防止用户输入的著名景点（如五台山）不在目标城市内时，搜出错误的同名小地点
+        params: { key: this.amapKey, keywords, city, show_fields: 'biz_ext' },
       }),
     );
     return data;
@@ -182,7 +183,7 @@ export class AmapService {
     }
   }
 
-  async findNearbyRestaurant(location: string): Promise<any> {
+  async findNearby(location: string, keywords: string, types: string = '', radius: number = 3000): Promise<any> {
     const url = `${this.amapApiBase}/place/around`;
     try {
       const { data } = await firstValueFrom(
@@ -190,22 +191,60 @@ export class AmapService {
           params: {
             key: this.amapKey,
             location,
-            keywords: '美食',
-            types: '050000', // 餐饮服务
-            radius: 1000,
-            sortrule: 'rating',
-            page_size: 1,
+            keywords,
+            types,
+            radius,
+            sortrule: 'weight',
+            page_size: 5,
             show_fields: 'biz_ext'
           },
         }),
       );
-      if (data && data.status === '1' && data.pois.length > 0) {
-        return data.pois[0];
+      if (data && data.status === '1' && data.pois && data.pois.length > 0) {
+        // Filter out POIs without location
+        const validPois = data.pois.filter(p => p.location);
+        return validPois.length > 0 ? validPois : null;
       }
       return null;
     } catch (error) {
-      this.logger.error('Failed to find nearby restaurant', error);
+      this.logger.error(`Failed to find nearby ${keywords}`, error);
       return null;
+    }
+  }
+
+  async findNearbyRestaurant(location: string): Promise<any> {
+    const pois = await this.findNearby(location, '美食', '050000', 2000);
+    return pois ? pois[0] : null;
+  }
+
+  async findNearbyHotel(location: string): Promise<any> {
+    const pois = await this.findNearby(location, '酒店', '100000', 3000);
+    return pois ? pois[0] : null;
+  }
+
+  async findPopularAttractions(city: string, limit: number = 10): Promise<any[]> {
+    const url = `${this.amapApiBase}/place/text`;
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get(url, {
+          params: {
+            key: this.amapKey,
+            keywords: '风景名胜',
+            types: '110000', // 旅游景点
+            city,
+            citylimit: true,
+            sortrule: 'weight',
+            page_size: limit,
+          },
+        }),
+      );
+      if (data && data.status === '1' && data.pois) {
+        return data.pois.filter(p => p.location);
+      }
+      return [];
+    } catch (error) {
+      this.logger.error(`Failed to find popular attractions in ${city}`, error);
+      return [];
     }
   }
 
@@ -239,7 +278,7 @@ export class AmapService {
     }
   }
 
-  async getIntercityRouteDetails(origin: string, destination: string): Promise<{ duration: number; distance: number; cost: number }> {
+  async getIntercityRouteDetails(origin: string, destination: string): Promise<{ duration: number; distance: number; cost: number; mode: TransportMode; vehicle: string }> {
     const url = `${this.amapApiV5Base}/direction/driving`;
     try {
       const { data } = await firstValueFrom(
@@ -253,27 +292,52 @@ export class AmapService {
         }),
       );
 
+      let distance = 0;
+
       if (data && data.status === '1' && data.route && data.route.paths && data.route.paths.length > 0) {
         const path = data.route.paths[0];
-        const duration = Math.ceil(parseInt(path.duration, 10) / 60); // in minutes
-        const distance = Math.ceil(parseInt(path.distance, 10) / 1000); // in km
-
-        const tollCost = path.cost?.tolls ? parseFloat(path.cost.tolls) : 0;
-        
-        // 简单估算燃油费：假设 0.6 元/公里
-        const fuelCost = distance * 0.6;
-        
-        const totalCost = Math.ceil(tollCost + fuelCost);
-
-        return { duration, distance, cost: totalCost };
+        distance = Math.ceil(parseInt(path.distance, 10) / 1000); // in km
+      } else {
+        // 如果API没有返回有效路径，使用球面距离(Haversine)作为保底
+        const [lon1, lat1] = origin.split(',').map(Number);
+        const [lon2, lat2] = destination.split(',').map(Number);
+        const R = 6371; // km
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                  Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                  Math.sin(dLon/2) * Math.sin(dLon/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        distance = R * c;
       }
-      // 如果API调用失败或未返回路径，则返回默认值
-      this.logger.warn(`Could not fetch intercity route details for ${origin} -> ${destination}. Returning default values.`);
-      return { duration: 180, distance: 300, cost: 200 };
+
+      // 根据距离智能判断交通工具和时间
+      if (distance > 800) {
+        // 大于800公里推荐飞机 (时速约800km/h + 2小时安检候机)
+        const duration = Math.ceil(distance / 800 * 60) + 120;
+        const cost = Math.ceil(distance * 0.8); // 机票约 0.8元/km
+        return { duration, distance, cost, mode: TransportMode.transit, vehicle: '飞机' };
+      } else if (distance > 300) {
+        // 300~800公里推荐高铁 (时速约250km/h + 1小时进出站)
+        const duration = Math.ceil(distance / 250 * 60) + 60;
+        const cost = Math.ceil(distance * 0.4); // 高铁约 0.4元/km
+        return { duration, distance, cost, mode: TransportMode.transit, vehicle: '高铁' };
+      } else if (distance > 50) {
+        // 50~300公里推荐驾车/大巴 (时速约80km/h)
+        const duration = Math.ceil(distance / 80 * 60);
+        const cost = Math.ceil(distance * 0.6); // 油费/过路费约 0.6元/km
+        return { duration, distance, cost, mode: TransportMode.driving, vehicle: '驾车' };
+      } else {
+        // 50公里以内，短途打车 (时速约40km/h)
+        const duration = Math.ceil(distance / 40 * 60);
+        const cost = Math.ceil(distance * 2.5); // 打车约 2.5元/km
+        return { duration, distance, cost, mode: TransportMode.driving, vehicle: '打车' };
+      }
+
     } catch (error) {
       this.logger.error(`Failed to get intercity route details`, error);
       // 发生错误时返回默认值
-      return { duration: 180, distance: 300, cost: 200 };
+      return { duration: 180, distance: 300, cost: 200, mode: TransportMode.transit, vehicle: '高铁' };
     }
   }
 }

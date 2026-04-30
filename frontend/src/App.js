@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { ConfigProvider, Layout, message } from 'antd';
+import { ConfigProvider, Layout, App as AntdApp } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import './App.css';
 
@@ -35,7 +35,7 @@ function App() {
     window.addEventListener('storage', handleStorageChange);
     
     if (!process.env.REACT_APP_AMAP_KEY) {
-      message.warning('未设置高德地图API密钥，地图功能可能无法正常使用');
+      console.warn('未设置高德地图API密钥，地图功能可能无法正常使用');
     }
     
     return () => {
@@ -46,37 +46,68 @@ function App() {
   return (
     <ConfigProvider locale={zhCN} theme={{
       token: {
-        colorPrimary: '#1890ff',
-        borderRadius: 6,
+        colorPrimary: '#4F46E5',
+        borderRadius: 8,
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        colorBgContainer: '#ffffff',
+        colorBgLayout: '#F9FAFB',
+        colorText: '#111827',
+        colorTextSecondary: '#4B5563',
       },
+      components: {
+        Card: {
+          borderRadiusLG: 16,
+          boxShadowTertiary: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+        },
+        Button: {
+          borderRadius: 8,
+          controlHeight: 40,
+        },
+        Input: {
+          borderRadius: 8,
+          controlHeight: 40,
+        },
+        Select: {
+          borderRadius: 8,
+          controlHeight: 40,
+        },
+        Tabs: {
+          itemColor: 'var(--text-secondary)',
+          itemSelectedColor: 'var(--primary-color)',
+          itemHoverColor: 'var(--primary-color)',
+          titleFontSize: 16,
+        }
+      }
     }}>
-      <Router>
-        <Layout className="app-layout">
-          <AppHeader isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} />
-          <Content className="app-content">
-            <Routes>
-              {/* Public Routes */}
-              <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
-              <Route path="/register" element={<RegisterPage />} />
+      <AntdApp>
+        <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          <Layout className="app-layout">
+            <AppHeader isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} />
+            <Content className="app-content">
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
+                <Route path="/register" element={<RegisterPage />} />
 
-              {/* Protected Routes */}
-              <Route element={<ProtectedRoute />}>
-                <Route path="/generate" element={<GenerateItineraryPage />} />
-                <Route path="/itinerary/:id" element={<ItineraryDetailPage />} />
-              </Route>
-              
-              {/* Redirect root path */}
-              <Route 
-                path="/" 
-                element={<Navigate replace to={isAuthenticated ? "/generate" : "/login"} />} 
-              />
-            </Routes>
-          </Content>
-          <Footer style={{ textAlign: 'center' }}>
-            旅行攻略规划 ©{new Date().getFullYear()} 为爱而创
-          </Footer>
-        </Layout>
-      </Router>
+                {/* Protected Routes */}
+                <Route element={<ProtectedRoute />}>
+                  <Route path="/generate" element={<GenerateItineraryPage />} />
+                  <Route path="/itinerary/:id" element={<ItineraryDetailPage />} />
+                </Route>
+                
+                {/* Redirect root path */}
+                <Route 
+                  path="/" 
+                  element={<Navigate replace to={isAuthenticated ? "/generate" : "/login"} />} 
+                />
+              </Routes>
+            </Content>
+            <Footer style={{ textAlign: 'center' }}>
+              旅行攻略规划 ©{new Date().getFullYear()} 为爱而创
+            </Footer>
+          </Layout>
+        </Router>
+      </AntdApp>
     </ConfigProvider>
   );
 }

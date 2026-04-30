@@ -32,6 +32,8 @@ model Itinerary {
   startDate   DateTime?
   endDate     DateTime?
   totalEstimatedCost Decimal?   @default(0)
+  // 保存生成时的原始参数，用于重新生成 (JSON字符串)
+  generationParams  String?    @db.Text
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)

@@ -33,4 +33,8 @@ export class CreateItineraryDto {
   @IsNumber()
   @IsOptional()
   estimatedCost?: number;
+
+  @IsString()
+  @IsOptional()
+  generationParams?: string;
 } 

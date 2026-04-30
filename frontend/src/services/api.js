@@ -56,6 +56,12 @@ const itineraryApi = {
   
   // 生成旅行攻略
   generateItinerary: (data) => api.post('/itineraries/generate', data),
+
+  // 重新生成旅行攻略
+  regenerateItinerary: (id) => api.post(`/itineraries/${id}/regenerate`),
+
+  // 删除行程
+  deleteItinerary: (id) => api.post(`/itineraries/${id}/delete`),
   
   // 添加行程项
   addPlanItem: (itineraryId, data) => api.post(`/itineraries/${itineraryId}/plan-items`, data),

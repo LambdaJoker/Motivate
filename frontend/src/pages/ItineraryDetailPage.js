@@ -1,38 +1,38 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Card, Typography, Tabs, Spin, Row, Col, Button, 
-  message, Divider, Modal, Descriptions, Badge, Tooltip,
-  Timeline, Empty, Tag, Space, Statistic
+  Divider,
+  Timeline, Empty, Tag, Space, Statistic, App, Modal
 } from 'antd';
 import { 
   CalendarOutlined, EnvironmentOutlined, CloudOutlined,
-  CarOutlined, QrcodeOutlined, LinkOutlined, WalletOutlined,
-  CheckCircleOutlined
+  CarOutlined, LinkOutlined, WalletOutlined,
+  CheckCircleOutlined, DeleteOutlined, ExclamationCircleOutlined, SyncOutlined,
+  ExpandAltOutlined, ShrinkOutlined
 } from '@ant-design/icons';
 import { format, addDays, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import AMap from '../components/AMap';
-import ScenicSpotCard from '../components/ScenicSpotCard';
 import { itineraryApi, amapApi } from '../services/api';
 
-const { Title, Text, Paragraph } = Typography;
-const { TabPane } = Tabs;
+const { Title, Text } = Typography;
 
 const ItineraryDetailPage = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  // 使用 App.useApp() 获取上下文消费的方法，消除静态调用的警告
+  const { message, modal } = App.useApp();
+  
   const [loading, setLoading] = useState(true);
   const [itinerary, setItinerary] = useState(null);
   const [activeDate, setActiveDate] = useState('');
   const [activeDateItems, setActiveDateItems] = useState([]);
   const [routeData, setRouteData] = useState(null);
-  const [weatherData, setWeatherData] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [selectedSpot, setSelectedSpot] = useState(null);
-  const [selectedSpotDetail, setSelectedSpotDetail] = useState(null);
   const [amapLink, setAmapLink] = useState('');
   const [qrModalVisible, setQrModalVisible] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   
   // 获取行程详情
   useEffect(() => {
@@ -40,10 +40,16 @@ const ItineraryDetailPage = () => {
       try {
         setLoading(true);
         const data = await itineraryApi.getItineraryWithItems(id);
+        
+        // Ensure data exists before accessing its properties
+        if (!data) {
+          throw new Error('未获取到行程数据');
+        }
+        
         setItinerary(data);
         
         // 处理日期数据
-        if (data && data.planItems && data.planItems.length > 0) {
+        if (data.planItems && data.planItems.length > 0) {
           // 按日期分组
           const dateGrouped = groupItemsByDate(data.planItems);
           
@@ -70,23 +76,128 @@ const ItineraryDetailPage = () => {
     };
     
     fetchItinerary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
   
-  // 获取路线规划
+  // 监听 activeDate 的变化，更新 activeDateItems 和 路线数据
   useEffect(() => {
-    if (activeDate && activeDateItems.length > 1) {
-      fetchRouteForDate();
-    } else {
+    if (!itinerary || !itinerary.planItems || !activeDate) return;
+
+    const dateGrouped = groupItemsByDate(itinerary.planItems);
+    const items = dateGrouped[activeDate] || [];
+    
+    // 添加排序逻辑，确保按照游览顺序渲染和连线
+    const sortedItems = [...items].sort((a, b) => {
+      if (a.orderIndex != null && b.orderIndex != null) {
+        return a.orderIndex - b.orderIndex;
+      }
+      if (a.startTime && b.startTime) {
+        try {
+          return parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime();
+        } catch(e) {
+          return 0;
+        }
+      }
+      return 0;
+    });
+    
+    setActiveDateItems(sortedItems);
+    // 重置选中的地点
+    setSelectedTimelineSpot(null);
+  }, [activeDate, itinerary]);
+
+  // 当 activeDateItems 更新后，去请求对应路线
+  useEffect(() => {
+    if (!activeDate || activeDate === '未定日期') {
       setRouteData(null);
+      return;
     }
-  }, [activeDate, activeDateItems]);
+    
+    // 我们仅在拥有2个及以上的有效坐标点时才去请求路径规划
+    const validItemsForRoute = activeDateItems.filter(item => 
+      item && item.longitude != null && item.latitude != null && 
+      !isNaN(Number(item.longitude)) && !isNaN(Number(item.latitude))
+    );
+
+    if (validItemsForRoute.length < 2) {
+      setRouteData(null);
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchRouteForDate = async () => {
+      try {
+        setRouteLoading(true);
+        const routeResult = await itineraryApi.getRouteForDate(id, activeDate);
+        
+        if (!isMounted) return; // 避免组件卸载或日期切换后仍更新老状态
+
+        if (routeResult?.route?.paths?.[0]) {
+          const path = routeResult.route.paths[0];
+          const polyline = [];
+          
+          if (path.steps) {
+            path.steps.forEach(step => {
+              if (step.polyline) {
+                const points = step.polyline.split(';').map(point => {
+                  const [lng, lat] = point.split(',');
+                  return [parseFloat(lng), parseFloat(lat)];
+                }).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+                polyline.push(...points);
+              }
+            });
+            
+            if (polyline.length > 0) {
+              setRouteData({
+                path: polyline,
+                distance: path.distance,
+                duration: path.duration
+              });
+            } else {
+              setRouteData(null);
+            }
+          } else {
+            setRouteData(null);
+          }
+        } else {
+          setRouteData(null);
+        }
+      } catch (error) {
+        console.error('获取路线规划失败:', error);
+        if (isMounted) setRouteData(null);
+      } finally {
+        if (isMounted) setRouteLoading(false);
+      }
+    };
+
+    fetchRouteForDate();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeDateItems, activeDate, id]);
   
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [selectedTimelineSpot, setSelectedTimelineSpot] = useState(null);
+  const [timelineExpanded, setTimelineExpanded] = useState(false); // 控制时间轴是否全部展开
+
   // 按日期分组行程项目
   const groupItemsByDate = (planItems) => {
     const grouped = {};
     
     planItems.forEach(item => {
-      const dateStr = format(new Date(item.planDate), 'yyyy-MM-dd');
+      let dateStr;
+      try {
+        const dateObj = new Date(item.planDate);
+        if (isNaN(dateObj.getTime())) {
+          dateStr = '未定日期';
+        } else {
+          dateStr = format(dateObj, 'yyyy-MM-dd');
+        }
+      } catch (e) {
+        dateStr = '未定日期';
+      }
       
       if (!grouped[dateStr]) {
         grouped[dateStr] = [];
@@ -97,49 +208,24 @@ const ItineraryDetailPage = () => {
     
     return grouped;
   };
-  
-  // 获取特定日期的路线规划
-  const fetchRouteForDate = async () => {
-    try {
-      const routeResult = await itineraryApi.getRouteForDate(id, activeDate);
-      if (routeResult && routeResult.route && routeResult.route.paths) {
-        // 解析路径点
-        const path = routeResult.route.paths[0];
-        const polyline = [];
-        
-        if (path && path.steps) {
-          path.steps.forEach(step => {
-            if (step.polyline) {
-              const points = step.polyline.split(';').map(point => {
-                const [lng, lat] = point.split(',');
-                return [parseFloat(lng), parseFloat(lat)];
-              });
-              polyline.push(...points);
-            }
-          });
-          
-          setRouteData({
-            path: polyline,
-            distance: path.distance,
-            duration: path.duration
-          });
-        }
-      } else {
-        setRouteData(null); // 如果没有路径数据，确保清除旧的路线
-      }
-    } catch (error) {
-      console.error('获取路线规划失败:', error);
-    }
-  };
-  
+
   // 获取天气数据
   const fetchWeather = async (city) => {
     try {
       setWeatherLoading(true);
       const weather = await amapApi.getWeather(city);
-      setWeatherData(weather);
+      // 这里可以实现展示天气的逻辑，比如弹窗显示
+      if (weather) {
+        let weatherInfo = '暂无天气信息';
+        if (weather.lives && weather.lives.length > 0) {
+          const live = weather.lives[0];
+          weatherInfo = `${live.city}：${live.weather}，气温 ${live.temperature}℃，${live.winddirection}风 ${live.windpower}级`;
+        }
+        message.info(weatherInfo);
+      }
     } catch (error) {
       console.error('获取天气信息失败:', error);
+      message.error('获取天气信息失败');
     } finally {
       setWeatherLoading(false);
     }
@@ -189,175 +275,408 @@ const ItineraryDetailPage = () => {
     }
   };
   
-  // 查看景点详情
-  const handleViewDetail = (planItem, poiDetail) => {
-    setSelectedSpot(planItem);
-    setSelectedSpotDetail(poiDetail);
-    setModalVisible(true);
-  };
-  
+
   // 渲染日期选项卡
   const renderDateTabs = () => {
     if (!itinerary || !itinerary.startDate || !itinerary.endDate) {
       return null;
     }
     
-    const startDate = new Date(itinerary.startDate);
-    const endDate = new Date(itinerary.endDate);
+    let startDate, endDate;
+    try {
+      startDate = new Date(itinerary.startDate);
+      endDate = new Date(itinerary.endDate);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date');
+      }
+    } catch(e) {
+      return <Empty description="行程日期数据异常" />;
+    }
+    
     const diffDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
     
     const tabs = [];
     
     for (let i = 0; i < diffDays; i++) {
-      const date = addDays(startDate, i);
-      const dateStr = format(date, 'yyyy-MM-dd');
-      const formattedDate = format(date, 'MM月dd日', { locale: zhCN });
-      const dayOfWeek = format(date, 'EEEE', { locale: zhCN });
+      let date, dateStr, formattedDate, dayOfWeek;
+      try {
+        date = addDays(startDate, i);
+        dateStr = format(date, 'yyyy-MM-dd');
+        formattedDate = format(date, 'MM月dd日', { locale: zhCN });
+        dayOfWeek = format(date, 'EEEE', { locale: zhCN });
+      } catch (e) {
+        continue; // 跳过非法日期
+      }
       
-      const itemCount = itinerary.planItems.filter(
-        item => format(new Date(item.planDate), 'yyyy-MM-dd') === dateStr
-      ).length;
+      const dateItems = (itinerary.planItems || []).filter(
+        item => {
+          try {
+            return format(parseISO(item.planDate), 'yyyy-MM-dd') === dateStr;
+          } catch(e) {
+            return false;
+          }
+        }
+      ).sort((a, b) => {
+        if (a.orderIndex != null && b.orderIndex != null) {
+          return a.orderIndex - b.orderIndex;
+        }
+        if (a.startTime && b.startTime) {
+          try {
+            return parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime();
+          } catch(e) {
+            return 0;
+          }
+        }
+        return 0;
+      });
       
-      tabs.push(
-        <TabPane 
-          tab={
-            <div>
-              <div>第{i + 1}天</div>
-              <div>{formattedDate} {dayOfWeek}</div>
-            </div>
-          } 
-          key={dateStr}
-        >
-          {renderDateContent(dateStr)}
-        </TabPane>
-      );
+      tabs.push({
+        key: dateStr,
+        forceRender: true, // 强制渲染所有 TabPane 内容，防止高德地图获取不到尺寸报错
+        label: (
+          <div style={{ padding: '4px 8px' }}>
+            <div style={{ fontWeight: 600, fontSize: '1.125rem', marginBottom: 4 }}>第{i + 1}天</div>
+            <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>{formattedDate} {dayOfWeek}</div>
+          </div>
+        ),
+        children: (
+          <Row gutter={[24, 24]}>
+            <Col xs={24} lg={8}>
+              <Card 
+                title={<span style={{ fontWeight: 600 }}>行程安排</span>} 
+                extra={
+                  <Button 
+                    type="text" 
+                    icon={timelineExpanded ? <ShrinkOutlined /> : <ExpandAltOutlined />} 
+                    onClick={() => setTimelineExpanded(!timelineExpanded)}
+                  >
+                    {timelineExpanded ? '收起详情' : '展开详情'}
+                  </Button>
+                }
+                variant="borderless" 
+                className="timeline-card" 
+                style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' }}
+              >
+                {renderDateContent(dateItems)}
+              </Card>
+            </Col>
+            <Col xs={24} lg={16}>
+              {/* 高德地图如果放在 display:none 的容器里会获取不到宽高而报错，
+                  所以我们强制渲染了 Tab，但这里只给当前激活的 Tab 传递路线数据 */}
+              {/* 这里不再做 display none 切换，而是直接渲染 mapCard，里面的 AMap 自己判断是否渲染 */}
+              <div style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', position: 'relative' }}>
+                {routeLoading && activeDate === dateStr && (
+                  <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Spin tip="路线规划计算中..." />
+                  </div>
+                )}
+                {renderMap(dateItems, activeDate === dateStr ? routeData : null, dateStr)}
+              </div>
+              
+              {routeData && activeDate === dateStr && (
+                <Card style={{ marginTop: 16, borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)' }} size="small">
+                  <Row justify="space-around">
+                    <Col>
+                      <Statistic 
+                        title={<span style={{ color: 'var(--text-secondary)' }}>总距离</span>} 
+                        value={(routeData.distance / 1000).toFixed(1)} 
+                        suffix="公里" 
+                        prefix={<CarOutlined style={{ color: 'var(--primary-color)' }} />}
+                        valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }}
+                      />
+                    </Col>
+                    <Col>
+                      <Statistic 
+                        title={<span style={{ color: 'var(--text-secondary)' }}>预计车程</span>} 
+                        value={Math.ceil(routeData.duration / 60)} 
+                        suffix="分钟" 
+                        valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }}
+                      />
+                    </Col>
+                  </Row>
+                </Card>
+              )}
+            </Col>
+          </Row>
+        )
+      });
     }
     
     return (
       <Tabs 
-        activeKey={activeDate} 
+        activeKey={activeDate || (tabs.length > 0 ? tabs[0].key : undefined)} 
         onChange={setActiveDate}
         type="card"
         size="large"
         style={{ marginBottom: 24 }}
-      >
-        {tabs}
-      </Tabs>
+        items={tabs.length > 0 ? tabs : [{
+          key: 'empty',
+          label: '暂无行程',
+          children: <Empty description="无法解析任何有效行程日期" />
+        }]}
+      />
     );
   };
   
   // 渲染日期内容
-  const renderDateContent = (dateStr) => {
-    const dateItems = itinerary.planItems.filter(
-      item => format(new Date(item.planDate), 'yyyy-MM-dd') === dateStr
-    ).sort((a, b) => a.orderIndex - b.orderIndex);
-    
-    if (dateItems.length === 0) {
-      return <Empty description="当天没有安排行程" />;
+  const renderDateContent = (dateItems) => {
+    if (!dateItems || dateItems.length === 0) {
+      return <Empty description="当天没有安排行程" style={{ margin: '40px 0' }} />;
     }
     
     return (
-      <Timeline>
-        {dateItems.map(item => (
-          <Timeline.Item key={item.id}>
-            <p><strong>{format(parseISO(item.startTime), 'HH:mm')} - {item.title}</strong></p>
-            {item.description && <Text type="secondary">{item.description}</Text>}
-            <br/>
-            {item.estimatedCost > 0 && (
-              <Tag icon={<WalletOutlined />} color="gold">
-                预估花费: ¥{item.estimatedCost}
-              </Tag>
-            )}
-            <Button 
-              type="link" 
-              size="small"
-              onClick={() => handleNavigate(item)}
-            >
-              导航
-            </Button>
-          </Timeline.Item>
-        ))}
-      </Timeline>
+      <Timeline
+        style={{ marginTop: 16 }}
+        items={dateItems.map(item => {
+          let timeStr = '未定时间';
+          if (item.startTime) {
+            try {
+              timeStr = format(parseISO(item.startTime), 'HH:mm');
+            } catch(e) {}
+          }
+          
+          const isSelected = selectedTimelineSpot?.id === item.id;
+          // 决定是否展示详情：如果全局展开，或者当前节点被选中，则展示详情
+          const showDetails = timelineExpanded || isSelected;
+          
+          return {
+            key: item.id,
+            color: isSelected ? '#FF4D4F' : 'var(--primary-color)',
+            dot: isSelected ? <EnvironmentOutlined style={{ fontSize: '18px', color: '#FF4D4F' }} /> : null,
+            children: (
+              <div 
+                style={{ 
+                  paddingBottom: 16, 
+                  cursor: 'pointer',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: isSelected ? 'var(--bg-light)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+                onClick={() => setSelectedTimelineSpot(item)}
+              >
+                <p style={{ margin: showDetails ? '0 0 8px 0' : '0', fontSize: '1.05rem', display: 'flex', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--primary-color)', marginRight: 12, minWidth: '48px', whiteSpace: 'nowrap' }}>{timeStr}</span>
+                  <span style={{ fontWeight: 600, color: 'var(--text-main)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
+                </p>
+                
+                {/* 折叠/展开区域 */}
+                <div style={{ 
+                  maxHeight: showDetails ? '500px' : '0', 
+                  overflow: 'hidden', 
+                  opacity: showDetails ? 1 : 0,
+                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+                }}>
+                  {item.description && <Text type="secondary" style={{ display: 'block', marginBottom: 8, lineHeight: 1.5 }}>{item.description}</Text>}
+                  <Space wrap style={{ marginTop: 8 }}>
+                    {item.estimatedCost > 0 && (
+                      <Tag icon={<WalletOutlined />} color="orange" style={{ borderRadius: 4, border: 'none', background: '#fff7e6', color: '#d46b08' }}>
+                        预估花费: ¥{item.estimatedCost}
+                      </Tag>
+                    )}
+                    {item.durationMinutes > 0 && (
+                      <Tag color="blue" style={{ borderRadius: 4, border: 'none', background: '#e6f7ff', color: '#0958d9' }}>
+                        预计: {item.durationMinutes}分钟
+                      </Tag>
+                    )}
+                    <Button 
+                      type="primary" 
+                      ghost
+                      size="small"
+                      shape="round"
+                      icon={<CarOutlined />}
+                      onClick={(e) => {
+                        e.stopPropagation(); // 阻止事件冒泡，避免触发选中节点
+                        handleNavigate(item);
+                      }}
+                    >
+                      导航
+                    </Button>
+                  </Space>
+                </div>
+              </div>
+            )
+          };
+        })}
+      />
     );
   };
   
   // 渲染地图
-  const renderMap = () => {
-    if (!activeDateItems.length) {
+  const renderMap = (items = activeDateItems, route = null, dateStr = activeDate) => {
+    if (!items || !items.length) {
       return <Empty description="当天没有行程安排，无法显示地图" />;
     }
     
-    const mapMarkers = activeDateItems.map((item, index) => ({
-      longitude: item.longitude,
-      latitude: item.latitude,
-      title: item.locationName,
-      infoWindow: `
-        <div>
-          <h3>${item.locationName}</h3>
-          <p>${item.notes || ''}</p>
-          ${item.startTime ? `<p>计划时间: ${format(new Date(item.startTime), 'HH:mm', { locale: zhCN })}</p>` : ''}
-        </div>
-      `
-    }));
+    const validItems = items.filter(item => 
+      item && item.longitude != null && item.latitude != null && 
+      !isNaN(Number(item.longitude)) && !isNaN(Number(item.latitude))
+    );
+
+    if (!validItems.length) {
+      return <Empty description="当天行程没有有效的地理位置数据" />;
+    }
+
+    const mapMarkers = validItems.map((item, index) => {
+      let formattedTime = '';
+      if (item.startTime) {
+        try {
+          // 这里使用 parseISO 而不是直接 new Date，处理某些浏览器对特定时间字符串格式的兼容问题
+          formattedTime = `<p>计划时间: ${format(parseISO(item.startTime), 'HH:mm', { locale: zhCN })}</p>`;
+        } catch(e) {}
+      }
+      const isSelected = selectedTimelineSpot?.id === item.id;
+      return {
+        longitude: Number(item.longitude),
+        latitude: Number(item.latitude),
+        title: item.locationName,
+        icon: isSelected 
+          ? 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png'
+          : 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+        infoWindow: `
+          <div>
+            <h3>${item.locationName}</h3>
+            <p>${item.notes || ''}</p>
+            ${formattedTime}
+          </div>
+        `
+      };
+    });
     
+    // 重新设计：给每个日期的地图加一个强制的 Key，让 React 在切换 Tabs 时完全卸载并重新创建 AMap
+    // 注意：这里不再将 selectedTimelineSpot 放入 mapKey 中，防止点击卡片时整个地图组件被卸载重刷！
+    const mapKey = `amap-${dateStr}-${route ? 'with-route' : 'no-route'}`;
+    const currentCenter = selectedTimelineSpot || validItems[0] || null;
+    
+    // 如果没有选中特定的卡片，并且有多个点，为了能在视野里看到全貌，应该降低缩放级别
+    // 我们将其调整为当未选中时 zoom = 10 (约50公里视野，能看清整个城市/县域和远郊景点)
+    // 选中时拉近到 14 (约街道/区域级别)
+    const currentZoom = selectedTimelineSpot ? 14 : 10;
+
     return (
-      <Card bordered={false}>
-        <AMap 
-          center={activeDateItems[0]} 
-          markers={mapMarkers}
-          polyline={routeData ? { path: routeData.path } : null}
-          style={{ height: 500 }}
-          mapKey={process.env.REACT_APP_AMAP_KEY}
-        />
+      <Card variant="borderless" style={{ width: '100%', minHeight: '500px' }}>
+        {activeDate === dateStr && (
+          <AMap 
+            key={mapKey}
+            center={currentCenter} 
+            zoom={currentZoom}
+            autoFitView={!selectedTimelineSpot}
+            markers={mapMarkers}
+            polyline={route ? { path: route.path } : null}
+            style={{ height: '500px', width: '100%' }}
+            mapKey={process.env.REACT_APP_AMAP_KEY}
+          />
+        )}
       </Card>
     );
+  };
+  
+  const handleRegenerateItinerary = () => {
+    modal.confirm({
+      title: '重新规划行程',
+      icon: <SyncOutlined style={{ color: 'var(--primary-color)' }} />,
+      content: '系统将使用您当初填写的参数重新生成一份全新的行程安排，当前行程将会被覆盖，是否继续？',
+      okText: '重新生成',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          setRegenerating(true);
+          await itineraryApi.regenerateItinerary(id);
+          message.success('行程重新规划成功！');
+          // 原地刷新以展示最新行程
+          window.location.reload();
+        } catch (error) {
+          console.error('重新生成行程失败:', error);
+          message.error('重新生成行程失败，可能原始参数已丢失');
+        } finally {
+          setRegenerating(false);
+        }
+      },
+    });
+  };
+
+  const handleDeleteItinerary = () => {
+    modal.confirm({
+      title: '确认删除',
+      icon: <ExclamationCircleOutlined style={{ color: '#DC2626' }} />,
+      content: '确定要删除这个旅行攻略吗？此操作不可恢复。',
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await itineraryApi.deleteItinerary(id);
+          message.success('行程已成功删除');
+          navigate('/generate', { replace: true });
+        } catch (error) {
+          console.error('删除行程失败:', error);
+          message.error('删除行程失败，请重试');
+        }
+      },
+    });
   };
   
   // 渲染页面标题和基本信息
   const renderPageHeader = () => {
     if (!itinerary) return null;
     
+    let startDateStr = '未定开始日期';
+    let endDateStr = '未定结束日期';
+    
+    if (itinerary.startDate) {
+      try { startDateStr = format(parseISO(itinerary.startDate), 'yyyy-MM-dd'); } catch(e) {}
+    }
+    if (itinerary.endDate) {
+      try { endDateStr = format(parseISO(itinerary.endDate), 'yyyy-MM-dd'); } catch(e) {}
+    }
+    
     return (
       <Card 
-        style={{ marginBottom: 24, borderRadius: 16 }}
-        bodyStyle={{ paddingTop: 16, paddingBottom: 16 }}
+        style={{ marginBottom: 24, borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}
+        styles={{ body: { paddingTop: 24, paddingBottom: 24 } }}
       >
-        <Row justify="space-between" align="middle">
-          <Col>
-            <Title level={2} style={{ margin: 0 }}>
-              <EnvironmentOutlined /> {itinerary.title}
+        <Row justify="space-between" align="middle" gutter={[16, 16]}>
+          <Col xs={24} md={14}>
+            <Title level={2} style={{ margin: 0, fontWeight: 700, color: 'var(--text-main)' }}>
+              <EnvironmentOutlined style={{ color: 'var(--primary-color)' }} /> {itinerary.title}
             </Title>
-            <Text type="secondary">
+            <Text type="secondary" style={{ display: 'inline-block', marginTop: 8, fontSize: '1rem' }}>
               <CalendarOutlined style={{ marginRight: 8 }} />
-              {format(parseISO(itinerary.startDate), 'yyyy-MM-dd')} 至 {format(parseISO(itinerary.endDate), 'yyyy-MM-dd')}
+              {startDateStr} 至 {endDateStr}
             </Text>
           </Col>
-          <Col>
-            <Space size="large">
-              <Button icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink}>
-                分享到高德地图
+          <Col xs={24} md={10} style={{ textAlign: 'right' }}>
+            <Space size="middle" wrap>
+              <Button icon={<SyncOutlined />} onClick={handleRegenerateItinerary} loading={regenerating} style={{ borderRadius: 'var(--radius-md)' }}>
+                重新规划
               </Button>
-              <Button type="primary" icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading}>
-                天气预报
+              <Button icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink} style={{ borderRadius: 'var(--radius-md)' }}>
+                分享
+              </Button>
+              <Button icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading} style={{ borderRadius: 'var(--radius-md)' }}>
+                天气
+              </Button>
+              <Button danger icon={<DeleteOutlined />} onClick={handleDeleteItinerary} style={{ borderRadius: 'var(--radius-md)' }}>
+                删除
               </Button>
             </Space>
           </Col>
         </Row>
         {itinerary.budget > 0 && (
           <>
-            <Divider style={{ marginTop: 16, marginBottom: 16 }} />
-            <Row gutter={16}>
-              <Col span={8}>
-                <Statistic title="人均预算" value={itinerary.budget} prefix="¥" />
+            <Divider style={{ marginTop: 24, marginBottom: 24, borderColor: 'var(--border-color)' }} />
+            <Row gutter={[24, 24]}>
+              <Col xs={12} md={8}>
+                <Statistic title={<span style={{ color: 'var(--text-secondary)' }}>人均预算</span>} value={itinerary.budget} prefix="¥" valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }} />
               </Col>
-              <Col span={8}>
-                <Statistic title="预估总花费" value={itinerary.estimatedCost} prefix="¥" />
+              <Col xs={12} md={8}>
+                <Statistic title={<span style={{ color: 'var(--text-secondary)' }}>预估总花费</span>} value={itinerary.estimatedCost} prefix="¥" valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }} />
               </Col>
-              <Col span={8}>
+              <Col xs={24} md={8}>
                 <Statistic 
-                  title="预算充足" 
+                  title={<span style={{ color: 'var(--text-secondary)' }}>预算充足</span>} 
                   value={itinerary.budget >= itinerary.estimatedCost ? '是' : '否'} 
-                  valueStyle={{ color: itinerary.budget >= itinerary.estimatedCost ? '#3f8600' : '#cf1322' }}
+                  valueStyle={{ color: itinerary.budget >= itinerary.estimatedCost ? '#059669' : '#DC2626', fontWeight: 600 }}
                   prefix={itinerary.budget >= itinerary.estimatedCost ? <CheckCircleOutlined /> : <WalletOutlined />}
                 />
               </Col>
@@ -384,64 +703,8 @@ const ItineraryDetailPage = () => {
       <Row gutter={[24, 24]}>
         <Col span={24}>
           {renderDateTabs()}
-          
-          <Divider>行程地图</Divider>
-          
-          {renderMap()}
         </Col>
       </Row>
-      
-      {/* 景点详情弹窗 */}
-      <Modal
-        title={selectedSpot?.locationName || '景点详情'}
-        open={modalVisible}
-        onCancel={() => setModalVisible(false)}
-        footer={[
-          <Button key="close" onClick={() => setModalVisible(false)}>
-            关闭
-          </Button>,
-          <Button 
-            key="navigate" 
-            type="primary"
-            onClick={() => {
-              setModalVisible(false);
-              handleNavigate(selectedSpot);
-            }}
-          >
-            导航前往
-          </Button>
-        ]}
-        width={600}
-      >
-        {selectedSpot && (
-          <div>
-            <Descriptions bordered column={1}>
-              <Descriptions.Item label="景点名称">
-                {selectedSpot.locationName}
-              </Descriptions.Item>
-              <Descriptions.Item label="地址">
-                {selectedSpotDetail?.address || selectedSpot.notes || '暂无详细地址'}
-              </Descriptions.Item>
-              {selectedSpotDetail?.tel && (
-                <Descriptions.Item label="联系电话">
-                  {selectedSpotDetail.tel}
-                </Descriptions.Item>
-              )}
-              {selectedSpot.startTime && (
-                <Descriptions.Item label="计划游览时间">
-                  {format(new Date(selectedSpot.startTime), 'HH:mm', { locale: zhCN })}
-                  {selectedSpot.durationMinutes && ` (约${selectedSpot.durationMinutes}分钟)`}
-                </Descriptions.Item>
-              )}
-              {selectedSpotDetail?.type && (
-                <Descriptions.Item label="景点类型">
-                  {selectedSpotDetail.type}
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-          </div>
-        )}
-      </Modal>
       
       {/* 分享二维码弹窗 */}
       <Modal

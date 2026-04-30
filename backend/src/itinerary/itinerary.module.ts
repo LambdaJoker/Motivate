@@ -12,9 +12,10 @@ import { ItineraryService } from './itinerary.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthModule } from '../auth/auth.module';
 import { AmapModule } from '../amap/amap.module';
+import { LlmModule } from '../llm/llm.module';
 
 @Module({
-  imports: [AuthModule, AmapModule],
+  imports: [AuthModule, AmapModule, LlmModule],
   controllers: [ItineraryController],
   providers: [ItineraryService, PrismaService]
 })
