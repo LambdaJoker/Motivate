@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { AmapService } from '../amap/amap.service';
 
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
   private openai: OpenAI;
+  private progressMap = new Map<string, string[]>();
 
-  constructor() {
+  constructor(private readonly amapService: AmapService) {
     // 默认配置为 DeepSeek 的 API (便宜、效果好，兼容 OpenAI 格式)
     // 如果用户需要换成小米或其他模型，只需在 .env 中修改 LLM_API_KEY 和 LLM_BASE_URL 即可
     this.openai = new OpenAI({
@@ -15,28 +17,194 @@ export class LlmService {
     });
   }
 
-  // 模拟的社交平台搜索工具函数 (小红书/抖音等)
-  // 在实际生产中，可以对接第三方爬虫API或者官方API
+  // 使用 SearXNG (免费开源) 或 DuckDuckGo 等进行真实的互联网搜索
   private async searchSocialMedia(query: string, platform: 'xiaohongshu' | 'douyin' | 'all' = 'all') {
-    this.logger.log(`[Tool] Searching ${platform} for: ${query}`);
-    // 模拟搜索延迟
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // 这里返回模拟的热门数据，作为大模型的上下文补充
-    return [
-      {
-        platform: '小红书',
-        title: `${query}避坑指南，亲测好用！`,
-        content: `去${query}一定要注意这几点：1. 最好早上9点前去，人少好出片；2. 附近的那家老字号餐厅必打卡，人均只要50；3. 晚上的夜景比白天更好看。`,
-        likes: 12500
-      },
-      {
-        platform: '抖音',
-        title: `${query}一日游特种兵攻略`,
-        content: `带你用最少的钱玩转${query}！核心路线：先去南门打卡，然后顺着主路走到底。避雷：不要在景区里买特产，外面便宜一半。`,
-        likes: 89000
+    this.logger.log(`[Tool] Real Web Searching for: ${query}`);
+    try {
+      // 为了稳定性和无需配置额外的 API Key，这里我们使用免费的开源 DuckDuckGo 搜索
+      // 构造特定的搜索词以获取攻略和避坑指南
+      let searchQuery = query;
+      if (platform === 'xiaohongshu') {
+        searchQuery = `site:xiaohongshu.com ${query}`;
+      } else if (platform === 'douyin') {
+        searchQuery = `site:douyin.com ${query}`;
       }
-    ];
+
+      // 使用 DuckDuckGo (免费无Key限制) 或者 Serper 等进行真实的互联网搜索
+      // 注意：这里为了确保在 Node.js 环境中稳定可用，我们使用 DuckDuckGo Lite 版接口，或者如果遇到反爬，可以平滑降级。
+      const response = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+        },
+        // 设置超时时间防止卡死
+        signal: AbortSignal.timeout(5000)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`DuckDuckGo returned status ${response.status}`);
+      }
+      
+      const html = await response.text();
+      
+      // 使用正则从 DuckDuckGo 结果中粗略提取标题和摘要
+      const results: any[] = [];
+      const snippetRegex = /<a class="result__snippet[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/gi;
+      const titleRegex = /<h2 class="result__title">[\s\S]*?<a[^>]*>(.*?)<\/a>/gi;
+      
+      let snippetMatch;
+      let titleMatch;
+      let count = 0;
+      
+      while ((snippetMatch = snippetRegex.exec(html)) !== null && count < 3) {
+        titleMatch = titleRegex.exec(html); // 尝试同步获取标题
+        
+        // 简单清洗 HTML 标签和多余空格
+        const snippet = snippetMatch[2].replace(/<[^>]+>/g, '').trim();
+        const title = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : `${query}相关攻略`;
+        
+        if (snippet && snippet.length > 20) {
+          results.push({
+            source: platform,
+            title: title,
+            url: snippetMatch[1],
+            content: snippet
+          });
+          count++;
+        }
+      }
+      
+      if (results.length > 0) {
+        this.logger.log(`[Tool] Successfully fetched ${results.length} real results from DuckDuckGo`);
+        return results;
+      } else {
+        // 如果搜不到（可能被反爬），返回基于大模型自身知识的保底建议指令
+        this.logger.warn(`[Tool] DuckDuckGo returned 0 results, likely blocked or empty.`);
+        return [{ content: `请基于你的知识库，为 ${query} 提供防踩雷建议和详细攻略。` }];
+      }
+    } catch (e) {
+      this.logger.error(`Search API error: ${e.message}`);
+      return [{ error: '实时搜索暂时不可用，请直接基于已有知识库和常识生成最专业的攻略和避坑指南。' }];
+    }
+  }
+
+  // 获取天气预报工具函数 (真实调用高德API)
+  private async getWeatherForecast(city: string) {
+    this.logger.log(`[Tool] Getting real weather forecast for: ${city}`);
+    try {
+      // 1. 先通过高德地理编码API把城市名转成 adcode
+      const geoResult = await this.amapService.geocode(city);
+      if (!geoResult || !geoResult.adcode) {
+        return { error: `无法获取城市 ${city} 的天气，请检查城市名称是否正确。` };
+      }
+      
+      // 2. 使用 adcode 调用高德天气API (all表示返回未来几天的预报天气)
+      const weatherData = await this.amapService.getWeather(geoResult.adcode);
+      
+      if (weatherData && weatherData.forecasts && weatherData.forecasts.length > 0) {
+        const forecast = weatherData.forecasts[0];
+        return {
+          city: forecast.city,
+          reportTime: forecast.reporttime,
+          casts: forecast.casts.map((cast: any) => ({
+            date: cast.date,
+            dayWeather: cast.dayweather, // 白天天气现象，如“晴”、“多云”
+            nightWeather: cast.nightweather, // 夜间天气现象
+            dayTemp: cast.daytemp + '℃', // 白天温度
+            nightTemp: cast.nighttemp + '℃', // 夜间温度
+            dayWind: cast.daywind + '风 ' + cast.daypower + '级', // 白天风向和风力
+            nightWind: cast.nightwind + '风 ' + cast.nightpower + '级' // 夜间风向和风力
+          }))
+        };
+      }
+      return { error: '获取天气数据失败' };
+    } catch (e) {
+      this.logger.error(`Weather API error: ${e.message}`);
+      return { error: '天气API调用异常' };
+    }
+  }
+
+  // 获取当地景点/美食推荐工具函数 (真实调用高德API)
+  private async getLocalRecommendations(city: string, keyword: string) {
+    this.logger.log(`[Tool] Getting real local recommendations for: ${city} - ${keyword}`);
+    try {
+      // 1. 先通过高德地理编码API把城市名转成 adcode 和 location (经纬度)
+      const geoResult = await this.amapService.geocode(city);
+      if (!geoResult || !geoResult.location) {
+        return { error: `无法获取城市 ${city} 的地理信息。` };
+      }
+      
+      // 2. 调用周边搜索 API 查找热门地点 (110000为风景名胜，050000为餐饮服务)
+      let typeCode = '';
+      if (keyword.includes('景点') || keyword.includes('风光') || keyword.includes('游玩') || keyword.includes('打卡')) {
+        typeCode = '110000'; // 旅游景点
+      } else if (keyword.includes('美食') || keyword.includes('餐厅') || keyword.includes('小吃') || keyword.includes('饭店') || keyword.includes('饭馆')) {
+        typeCode = '050000'; // 餐饮服务
+      } else if (keyword.includes('酒店') || keyword.includes('住宿') || keyword.includes('民宿') || keyword.includes('旅社')) {
+        typeCode = '100000'; // 住宿服务
+      } else if (keyword.includes('购物') || keyword.includes('商场') || keyword.includes('超市')) {
+        typeCode = '060000'; // 购物服务
+      }
+      
+      const searchResult = await this.amapService.findNearby(geoResult.location, keyword, typeCode, 15000); // 搜索半径扩大到15公里
+      
+      if (searchResult && Array.isArray(searchResult) && searchResult.length > 0) {
+        return {
+          city: city,
+          recommendations: searchResult.slice(0, 5).map((poi: any) => ({
+            name: poi.name,
+            type: poi.type,
+            address: poi.address,
+            distance: poi.distance + '米',
+            business_area: poi.business_area || '未知商圈',
+            rating: poi.biz_ext?.rating || '暂无评分',
+            cost: poi.biz_ext?.cost ? `人均￥${poi.biz_ext.cost}` : '价格未知'
+          }))
+        };
+      }
+      
+      return { error: '未找到相关推荐地点' };
+    } catch (e) {
+      this.logger.error(`Amap search API error: ${e.message}`);
+      return { error: '地点搜索API调用异常' };
+    }
+  }
+
+  // 获取交通耗时和花费预估工具函数
+  private async calculateRouteEstimate(originName: string, destinationName: string) {
+    this.logger.log(`[Tool] Calculating route estimate from ${originName} to ${destinationName}`);
+    try {
+      const geoOrigin = await this.amapService.geocode(originName);
+      const geoDest = await this.amapService.geocode(destinationName);
+      
+      if (!geoOrigin || !geoOrigin.location || !geoDest || !geoDest.location) {
+        return { error: `无法解析地点坐标，请确认地点名称是否准确：${originName} 或 ${destinationName}` };
+      }
+      
+      const routeInfo = await this.amapService.getIntercityRouteDetails(geoOrigin.location, geoDest.location);
+      
+      return {
+        origin: originName,
+        destination: destinationName,
+        distance_km: routeInfo.distance,
+        estimated_duration_minutes: routeInfo.duration,
+        estimated_cost_rmb: routeInfo.cost,
+        recommended_vehicle: routeInfo.vehicle,
+        notice: '以上时间包含进出站和安检时间，花费为该交通方式的平均预估价。'
+      };
+    } catch (e) {
+      this.logger.error(`Route estimate API error: ${e.message}`);
+      return { error: '路线计算异常' };
+    }
+  }
+
+  getProgress(taskId: string): string[] {
+    return this.progressMap.get(taskId) || [];
+  }
+
+  clearProgress(taskId: string) {
+    this.progressMap.delete(taskId);
   }
 
   async generateItinerary(params: {
@@ -47,7 +215,9 @@ export class LlmService {
     budget: number;
     mustVisitSpots: string[];
     transportMode: string;
+    travelPreference?: string;
     fullPromptContext?: string;
+    taskId?: string;
   }) {
     const prompt = `
 你是一个专业的金牌旅游规划师。请根据用户的需求，规划一份详细、合理、无缝衔接的旅游行程。
@@ -58,18 +228,26 @@ export class LlmService {
 目的地：${params.destination}
 出发日期：${params.startDate}
 游玩天数：${params.durationDays}天
+旅行偏好：${params.travelPreference || '无特别偏好'}
 人均预算：${params.budget ? params.budget + '元' : '未限制'}
 必去景点：${params.mustVisitSpots.join('、') || '无'}
 交通偏好：${params.transportMode === 'driving' ? '自驾' : params.transportMode === 'walking' ? '徒步' : '公共交通/打车'}
 
 【规划原则】
-1. 行程必须从出发地的交通开始（如飞机/高铁/自驾），到最后一天返回结束。如果同城游玩则不需要城际交通。
-2. 每天的行程必须包含：早上的景点、午餐、下午的景点、晚餐、入住酒店。
-3. 时间安排必须符合常理，考虑景点间的交通时间（默认预留30-60分钟）。每天晚上必须在22:00前安排回酒店休息。
-4. 必去景点必须全部安排进去。如果时间有富裕，请补充当地最著名、顺路的特色景点。
-5. 餐饮请推荐当地特色美食或具体著名餐厅名称。
-6. 必须考虑到实际的地理位置，不要把相距很远的景点安排在同一天的相近时间。
-7. 为了让行程更生动，你可以调用工具搜索小红书/抖音，把避坑指南或美食推荐写入 \`description\` 字段中！
+1. 核心目标：必须严格围绕用户的【旅行偏好】（如：${params.travelPreference || '无'}）来挑选景点、餐厅和安排行程节奏。
+2. 预算控制（极度重要）：用户的预算是 ${params.budget ? params.budget + '元' : '无上限'}。你在选择餐厅、酒店、交通和收费景点时，必须严格计算花费，确保 \`totalEstimatedCost\`（所有项目的 \`estimatedCost\` 总和）绝对不能超过用户的总预算！如果预算较低，请多安排免费景点、公共交通和高性价比餐饮住宿。
+3. 数据真实性与准确性（极度重要）：强烈建议在规划前，调用 \`getLocalRecommendations\` 获取当地真实的景点、餐厅和酒店名字及人均消费！绝对禁止编造虚假的店名。
+4. 时间与价格计算（极度重要）：
+   - 对于景点门票、餐饮、酒店等花费，你**必须**参考 \`getLocalRecommendations\` 返回的 \`cost\` (人均消费) 字段作为 \`estimatedCost\`。
+   - 对于任何交通（包含城际交通如高铁/飞机，以及同城交通如打车/地铁），你**必须**调用 \`calculateRouteEstimate\` 工具来获取精准的 \`estimated_duration_minutes\` 和 \`estimated_cost_rmb\`，禁止随意编造时间和交通价格！
+   - 最终输出的 \`totalEstimatedCost\` 必须是你安排的所有项目 \`estimatedCost\` 的总和！
+5. 行程连贯性与返程规划：行程必须从出发地的交通开始。如果出发地和目的地不同，并且用户选择了多天游玩，必须在最后一天安排合理的返程交通。如果是自驾或途经多城，可以规划“一路玩回去”的顺路景点。如果同城游玩则不需要城际交通。
+6. 每天结构：每天的行程必须包含：早上的景点、午餐、下午的景点、晚餐、入住酒店。
+7. 节奏与时间：必须符合常理。调用 \`calculateRouteEstimate\` 确保景点间的交通时间真实可靠。每天晚上必须在22:00前安排回酒店休息。
+8. 必去景点：用户填写的必去景点必须全部安排进去。如果时间有富裕，请补充当地最著名、且符合用户【旅行偏好】的特色景点。
+9. 餐饮安排：必须推荐具体、真实的著名餐厅或小吃店名称。
+10. 地理位置合理性：必须考虑到实际的地理位置，不要把相距很远的景点安排在同一天的相近时间。
+11. 实用性与避坑：调用天气工具和社交媒体搜索工具，将天气预警、最新的避坑指南、拍照机位写入 \`description\` 字段中！
 
 【输出格式】
 请务必只输出合法的 JSON 格式，绝对不要包含任何 XML 标签、思考过程（如 <think> 或 <invoke>）或任何说明文字。
@@ -84,11 +262,11 @@ JSON 结构必须严格如下：
         {
           "time": "08:00", // 格式 HH:mm
           "durationMinutes": 120, // 预计耗时(分钟)，必须是整数
-          "title": "乘坐高铁前往目的地", // 动作标题
-          "locationName": "太原南站", // 地点名称：如果是交通，写目的地站；如果是景点，写景点名；如果是餐饮，写餐厅名或“特色餐厅”
+          "title": "动作标题", // 例如：乘坐高铁前往目的地、游览某某景区、品尝某某美食
+          "locationName": "具体地点", // 必须是真实存在的高德地图能搜到的具体 POI 名称！如果是交通，写目的地站；如果是景点，写具体的景点全称；如果是餐饮，必须写具体的餐厅或小吃店名字。不要写类似“无”、“特色餐厅”、“民宿”这种泛泛而谈的词汇。
           "type": "transport", // 必须是以下之一: transport, activity, food, accommodation
-          "estimatedCost": 200, // 预估花费(元)，必须是整数
-          "description": "从出发地乘坐高铁前往目的地。避坑：最好提前半小时到站。" // 详细描述，可包含社交平台搜到的攻略
+          "estimatedCost": 200, // 预估花费(元)，必须是整数，必须严格参考工具返回的 cost 或 estimated_cost_rmb 字段
+          "description": "详细描述" // 结合旅行偏好、天气预报、真实周边地点评分和社交攻略，提供最具价值的建议，比如“该餐厅评分4.8，必点特色菜XXX”、“明天有雨，适合在室内游览”或“本地人建议避开正门网红机位排队”。
         }
       ]
     }
@@ -96,7 +274,19 @@ JSON 结构必须严格如下：
 }
 `;
 
+    const addLog = (msg: string) => {
+      if (params.taskId) {
+        const logs = this.progressMap.get(params.taskId) || [];
+        // 如果最后一条日志不是这个，就加进去，防止重复
+        if (logs[logs.length - 1] !== msg) {
+          logs.push(msg);
+          this.progressMap.set(params.taskId, logs);
+        }
+      }
+    };
+
     this.logger.log('Calling LLM to generate itinerary...');
+    addLog('开始分析您的旅行需求...');
     
     try {
       // 定义大模型可以调用的工具(Function Calling)
@@ -120,6 +310,65 @@ JSON 结构必须严格如下：
                 }
               },
               required: ["query"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "getWeatherForecast",
+            description: "获取目标城市的近期天气预报，以便合理安排室内和室外行程，避免在雨天安排爬山或海边游玩。",
+            parameters: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string",
+                  description: "城市名称，例如：'三亚' 或 '北京'"
+                }
+              },
+              required: ["city"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "getLocalRecommendations",
+            description: "获取目标城市周边真实的景点、美食、酒店推荐信息及人均消费价格（基于高德地图）。当需要寻找真实的、有评分和人均消费参考的具体地点时调用此工具。",
+            parameters: {
+              type: "object",
+              properties: {
+                city: {
+                  type: "string",
+                  description: "城市名称，例如：'三亚' 或 '北京'"
+                },
+                keyword: {
+                  type: "string",
+                  description: "搜索关键词，例如：'特色美食'、'海景酒店'、'网红打卡景点'"
+                }
+              },
+              required: ["city", "keyword"]
+            }
+          }
+        },
+        {
+          type: "function",
+          function: {
+            name: "calculateRouteEstimate",
+            description: "精确计算两个地点之间的交通时间（分钟）和花费（人民币）。无论是同城短途还是跨城长途交通，都必须调用此工具以获取真实准确的耗时与价格！",
+            parameters: {
+              type: "object",
+              properties: {
+                originName: {
+                  type: "string",
+                  description: "出发地点名称，例如：'北京南站' 或 '三亚凤凰机场' 或 '亚龙湾'"
+                },
+                destinationName: {
+                  type: "string",
+                  description: "到达地点名称，例如：'三亚凤凰机场' 或 '天涯海角'"
+                }
+              },
+              required: ["originName", "destinationName"]
             }
           }
         }
@@ -190,46 +439,57 @@ JSON 结构必须严格如下：
           normalizeMiniMaxToolCalls(responseMessage);
           
           // 限制最大工具调用次数，防止死循环
-          let maxToolCalls = 10;
+          let maxToolCalls = 30;
 
           // 当模型决定调用工具时
           while (responseMessage.tool_calls && maxToolCalls > 0) {
             messages.push(responseMessage); // 将模型的请求加入历史对话
             
             for (const toolCall of responseMessage.tool_calls) {
-              if (toolCall.type === 'function' && toolCall.function.name === 'searchSocialMedia') {
-                let args;
-                
-                // 处理一些模型（特别是小米/MiniMax）在返回的 arguments 里可能带有多余转义字符的问题
-                let rawArgs = toolCall.function.arguments;
-                // 如果发现非法的开头（如 XML/HTML 标签混入，比如 <tool_call>{...}</tool_call>），尝试修复
-                if (rawArgs.includes('{') && rawArgs.includes('}')) {
-                  const firstBrace = rawArgs.indexOf('{');
-                  const lastBrace = rawArgs.lastIndexOf('}');
-                  rawArgs = rawArgs.substring(firstBrace, lastBrace + 1);
-                }
-                
-                try {
-                  args = JSON.parse(rawArgs);
-                } catch (e) {
-                  this.logger.warn(`Failed to parse tool arguments: ${rawArgs}`);
-                  args = { query: params.destination, platform: 'all' }; // 解析失败时的 fallback
-                }
-                
-                // 执行真实的本地工具函数
-                const toolResult = await this.searchSocialMedia(args.query, args.platform);
-                
-                // 将工具的执行结果返回给大模型
-                messages.push({
-                  role: 'tool',
-                  tool_call_id: toolCall.id,
-                  content: JSON.stringify(toolResult),
-                });
+              let args;
+              let rawArgs = (toolCall as any).function.arguments;
+              if (rawArgs.includes('{') && rawArgs.includes('}')) {
+                const firstBrace = rawArgs.indexOf('{');
+                const lastBrace = rawArgs.lastIndexOf('}');
+                rawArgs = rawArgs.substring(firstBrace, lastBrace + 1);
               }
+              try {
+                args = JSON.parse(rawArgs);
+              } catch (e) {
+                this.logger.warn(`Failed to parse tool arguments: ${rawArgs}`);
+                args = {}; 
+              }
+
+              let toolResult;
+              if (toolCall.type === 'function') {
+                if (toolCall.function.name === 'searchSocialMedia') {
+                  addLog(`正在全网搜索攻略与避坑指南: ${args.query || params.destination}`);
+                  toolResult = await this.searchSocialMedia(args.query || params.destination, args.platform || 'all');
+                } else if (toolCall.function.name === 'getWeatherForecast') {
+                  addLog(`正在查询当地天气预报: ${args.city || params.destination}`);
+                  toolResult = await this.getWeatherForecast(args.city || params.destination);
+                } else if (toolCall.function.name === 'getLocalRecommendations') {
+                  addLog(`正在查询真实${args.keyword || '地点'}与价格: ${args.city || params.destination}`);
+                  toolResult = await this.getLocalRecommendations(args.city || params.destination, args.keyword || '景点');
+                } else if (toolCall.function.name === 'calculateRouteEstimate') {
+                  addLog(`正在精确计算路线时间与交通花费: ${args.originName} 到 ${args.destinationName}`);
+                  toolResult = await this.calculateRouteEstimate(args.originName, args.destinationName);
+                } else {
+                  toolResult = { error: 'Unknown tool' };
+                }
+              }
+
+              // 将工具的执行结果返回给大模型
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: JSON.stringify(toolResult),
+              });
             }
             
             // 带着工具的执行结果，再次向大模型发起请求，并要求最终输出 JSON
             // 注意：部分国产大模型调用工具后可能会不支持严格的 response_format
+            addLog('正在综合信息并生成最终行程安排...');
             const secondRequestParams: any = {
               model: process.env.LLM_MODEL_NAME || 'deepseek-chat',
               messages: messages,
@@ -321,10 +581,12 @@ JSON 结构必须严格如下：
           }
           
           this.logger.log('LLM successfully generated and parsed the itinerary.');
+          addLog('行程生成完毕，正在保存...');
           return parsedJSON;
 
         } catch (innerError) {
           this.logger.warn(`LLM generation attempt failed. Retries left: ${retries - 1}. Error: ${innerError.message}`);
+          addLog(`遇到小问题，正在进行第 ${4 - retries} 次重试...`);
           retries--;
           if (retries === 0) {
             throw innerError; // 如果重试次数用尽，向上抛出错误

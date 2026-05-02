@@ -3,14 +3,14 @@
 :root {
   --primary-color: #4F46E5;
   --primary-hover: #4338CA;
-  --bg-color: #F9FAFB;
+  --bg-color: #ffffff;
   --card-bg: #FFFFFF;
   --text-main: #111827;
   --text-secondary: #4B5563;
   --border-color: #E5E7EB;
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
   --radius-md: 0.5rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
@@ -23,7 +23,7 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg-color);
+  background-color: #f8fafc;
   color: var(--text-main);
 }
 
@@ -35,4 +35,132 @@ code {
 /* 全局动画和过渡 */
 * {
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.itinerary-item:hover .delete-btn {
+  opacity: 1 !important;
+}
+
+/* 自定义滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.timeline-card::-webkit-scrollbar {
+  width: 14px;
+}
+.timeline-card::-webkit-scrollbar-track {
+  background: transparent;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+.timeline-card::-webkit-scrollbar-thumb {
+  background-color: rgba(203, 213, 225, 0.6);
+  border-radius: 10px;
+  border: 4px solid transparent;
+  background-clip: content-box;
+}
+.timeline-card::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(148, 163, 184, 0.8);
+  border: 4px solid transparent;
+  background-clip: content-box;
+}
+
+.ant-timeline .ant-timeline-item-tail {
+  border-left: 2px dashed #e2e8f0 !important;
+}
+
+.ant-timeline-item-last > .ant-timeline-item-tail {
+  display: none !important;
+}
+
+.ant-timeline-item-head-custom {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* 隐藏高德地图右下角的 logo 和版权信息 */
+.amap-logo,
+.amap-copyright {
+  display: none !important;
+}
+
+.hover-bg-slate-100:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.timeline-card .ant-card-body {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  padding-right: 4px !important;
+}
+
+.ant-tabs-nav::before {
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.ant-tabs-tab {
+  padding: 8px 16px !important;
+  margin: 0 4px 0 0 !important;
+  border-radius: 12px 12px 0 0 !important;
+  border: 1px solid transparent !important;
+  border-bottom: none !important;
+  transition: all 0.3s ease !important;
+  background: transparent !important;
+}
+
+.ant-tabs-tab-active {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  border-bottom-color: #ffffff !important;
+  z-index: 2;
+}
+
+.ant-tabs-tab:hover:not(.ant-tabs-tab-active) {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+/* 隐藏地图自带的高德控件如果需要 */
+.amap-toolbar {
+  right: 16px !important;
+  bottom: 16px !important;
+}
+
+/* 时间轴节点动效 */
+.timeline-item-container {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(0);
+}
+.timeline-item-container:hover {
+  transform: translateX(4px);
+}
+.timeline-item-container.selected {
+  transform: translateX(8px) !important;
+  background-color: #eef2ff !important;
+  border-color: #c7d2fe !important;
+}
+
+@media (max-width: 991px) {
+  .date-tabs .ant-tabs-nav {
+    margin-bottom: 16px !important;
+  }
+  .timeline-card {
+    height: 400px !important;
+    margin-bottom: 16px;
+  }
 }

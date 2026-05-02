@@ -107,14 +107,14 @@ export class AmapService {
     return data;
   }
 
-  async getWeather(city: string) {
+  async getWeather(cityAdcode: string) {
     const url = `${this.amapApiBase}/weather/weatherInfo`;
     const { data } = await firstValueFrom(
       this.httpService.get(url, {
         params: { 
           key: this.amapKey, 
-          city, 
-          extensions: 'all', // 返回预报天气
+          city: cityAdcode, 
+          extensions: 'all', // 返回未来几天的预报天气
         },
       }),
     );
@@ -183,7 +183,7 @@ export class AmapService {
     }
   }
 
-  async findNearby(location: string, keywords: string, types: string = '', radius: number = 3000): Promise<any> {
+  async findNearby(location: string, keywords: string, types: string = '', radius: number = 15000): Promise<any> {
     const url = `${this.amapApiBase}/place/around`;
     try {
       const { data } = await firstValueFrom(
@@ -195,14 +195,24 @@ export class AmapService {
             types,
             radius,
             sortrule: 'weight',
-            page_size: 5,
+            page_size: 15, // 增加单次查询数量，以便更好地过滤无用数据
             show_fields: 'biz_ext'
           },
         }),
       );
       if (data && data.status === '1' && data.pois && data.pois.length > 0) {
-        // Filter out POIs without location
+        // Filter out POIs without location and prefer those with business info if possible
         const validPois = data.pois.filter(p => p.location);
+        
+        // 如果是找美食或酒店，优先返回有评分的
+        if (types === '050000' || types === '100000') {
+          validPois.sort((a, b) => {
+            const ratingA = parseFloat(a.biz_ext?.rating || '0');
+            const ratingB = parseFloat(b.biz_ext?.rating || '0');
+            return ratingB - ratingA;
+          });
+        }
+        
         return validPois.length > 0 ? validPois : null;
       }
       return null;
@@ -314,22 +324,22 @@ export class AmapService {
       // 根据距离智能判断交通工具和时间
       if (distance > 800) {
         // 大于800公里推荐飞机 (时速约800km/h + 2小时安检候机)
-        const duration = Math.ceil(distance / 800 * 60) + 120;
+        const duration = Math.ceil((distance / 800) * 60) + 120;
         const cost = Math.ceil(distance * 0.8); // 机票约 0.8元/km
         return { duration, distance, cost, mode: TransportMode.transit, vehicle: '飞机' };
       } else if (distance > 300) {
         // 300~800公里推荐高铁 (时速约250km/h + 1小时进出站)
-        const duration = Math.ceil(distance / 250 * 60) + 60;
+        const duration = Math.ceil((distance / 250) * 60) + 60;
         const cost = Math.ceil(distance * 0.4); // 高铁约 0.4元/km
         return { duration, distance, cost, mode: TransportMode.transit, vehicle: '高铁' };
       } else if (distance > 50) {
         // 50~300公里推荐驾车/大巴 (时速约80km/h)
-        const duration = Math.ceil(distance / 80 * 60);
+        const duration = Math.ceil((distance / 80) * 60);
         const cost = Math.ceil(distance * 0.6); // 油费/过路费约 0.6元/km
         return { duration, distance, cost, mode: TransportMode.driving, vehicle: '驾车' };
       } else {
         // 50公里以内，短途打车 (时速约40km/h)
-        const duration = Math.ceil(distance / 40 * 60);
+        const duration = Math.ceil((distance / 40) * 60);
         const cost = Math.ceil(distance * 2.5); // 打车约 2.5元/km
         return { duration, distance, cost, mode: TransportMode.driving, vehicle: '打车' };
       }

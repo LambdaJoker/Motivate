@@ -1,68 +1,87 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Form, Input, DatePicker, InputNumber, Button, Select, 
-  Typography, Card, Space, Divider, List, Skeleton, Row, Col, App
+  Typography, Card, Space, Divider, Row, Col, App, Collapse, Tag
 } from 'antd';
 import { 
   PlusOutlined, MinusCircleOutlined, 
-  EnvironmentOutlined, CalendarOutlined, RightOutlined, DeleteOutlined, ExclamationCircleOutlined
+  EnvironmentOutlined, CalendarOutlined,
+  LoadingOutlined, CheckCircleOutlined, BulbOutlined, RightOutlined
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import { itineraryApi } from '../services/api';
+import { itineraryApi, llmApi } from '../services/api';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 const { TextArea } = Input;
 const { Option } = Select;
+const { CheckableTag } = Tag;
+
+const PREFERENCES = [
+  { value: 'nature', label: '⛰️ 自然风光' },
+  { value: 'food', label: '🍜 特色美食' },
+  { value: 'culture', label: '🏛️ 历史文化' },
+  { value: 'relax', label: '☕ 休闲放松' },
+  { value: 'social', label: '👫 社交约会' },
+  { value: 'trend', label: '📸 网红打卡' },
+  { value: 'growth', label: '🌱 亲子游玩' },
+  { value: 'fun', label: '⛺ 探索冒险' },
+];
+
+const SURPRISE_DESTINATIONS = ['东京', '巴黎', '三亚', '成都', '大理', '京都', '巴厘岛', '清迈', '重庆', '杭州'];
 
 const GenerateItineraryPage = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
-  const [itineraries, setItineraries] = useState([]);
-  const [listLoading, setListLoading] = useState(true);
+  const [progressLogs, setProgressLogs] = useState([]);
+  const [taskId, setTaskId] = useState('');
   const navigate = useNavigate();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
+  const [selectedPrefs, setSelectedPrefs] = useState([]);
 
-  useEffect(() => {
-    fetchItineraries();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleSurpriseMe = () => {
+    const randomDest = SURPRISE_DESTINATIONS[Math.floor(Math.random() * SURPRISE_DESTINATIONS.length)];
+    form.setFieldsValue({ destination: randomDest });
+  };
+
+  const handlePrefChange = (val, checked) => {
+    const nextSelectedTags = checked ? [...selectedPrefs, val] : selectedPrefs.filter((t) => t !== val);
+    setSelectedPrefs(nextSelectedTags);
+    form.setFieldsValue({ travelPreference: nextSelectedTags });
+  };
+
+  React.useEffect(() => {
+    document.title = '新建行程 - TripAgent';
+    return () => {
+      document.title = 'TripAgent';
+    };
   }, []);
 
-  const fetchItineraries = async () => {
-    try {
-      setListLoading(true);
-      const data = await itineraryApi.getAllItineraries();
-      setItineraries(data);
-    } catch (error) {
-      message.error('获取行程列表失败');
-    } finally {
-      setListLoading(false);
-    }
-  };
-
-  const handleDeleteItinerary = (id, title) => {
-    modal.confirm({
-      title: '确认删除',
-      icon: <ExclamationCircleOutlined style={{ color: '#DC2626' }} />,
-      content: `确定要删除行程 "${title}" 吗？此操作不可恢复。`,
-      okText: '确认删除',
-      okType: 'danger',
-      cancelText: '取消',
-      onOk: async () => {
+  React.useEffect(() => {
+    let intervalId;
+    if (loading && taskId) {
+      intervalId = setInterval(async () => {
         try {
-          await itineraryApi.deleteItinerary(id);
-          message.success('行程已成功删除');
-          fetchItineraries();
-        } catch (error) {
-          console.error('删除行程失败:', error);
-          message.error('删除行程失败，请重试');
+          const res = await llmApi.getProgress(taskId);
+          if (res.logs && res.logs.length > 0) {
+            setProgressLogs(res.logs);
+          }
+        } catch (e) {
+          console.error('获取进度失败', e);
         }
-      },
-    });
-  };
+      }, 1500); // 每1.5秒拉取一次
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [loading, taskId]);
 
   // 生成旅行攻略
   const onFinish = async (values) => {
+    const currentTaskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setTaskId(currentTaskId);
+    setProgressLogs(['准备启动 AI 引擎...']);
+
     try {
       setLoading(true);
       
@@ -76,6 +95,7 @@ const GenerateItineraryPage = () => {
         optionalSpots: values.spots
           .filter(spot => !spot.isRequired)
           .map(spot => spot.name),
+        taskId: currentTaskId
       };
       
       delete formattedValues.spots;
@@ -85,27 +105,34 @@ const GenerateItineraryPage = () => {
       message.success('旅行攻略生成成功！');
       
       navigate(`/itinerary/${result.id}`);
+      window.dispatchEvent(new Event('refresh-itineraries'));
     } catch (error) {
       console.error('生成旅行攻略失败:', error);
       const errorMessage = error.response?.data?.message || '生成攻略失败，请重试';
       message.error(errorMessage);
     } finally {
       setLoading(false);
+      try {
+        await llmApi.clearProgress(currentTaskId);
+      } catch (e) {}
     }
   };
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
-      <Row gutter={[24, 24]}>
-        {/* Left side: Form */}
-        <Col xs={24} lg={14}>
-          <Card 
-            variant="borderless" 
-            style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', background: 'var(--card-bg)' }}
-          >
-            <Title level={2} style={{ textAlign: 'center', marginBottom: 32, fontWeight: 700, color: 'var(--text-main)' }}>
-              <CalendarOutlined style={{ color: 'var(--primary-color)' }} /> 智能生成旅行攻略
-            </Title>
+    <div style={{ maxWidth: 800, margin: '0 auto', padding: '0 16px 64px', position: 'relative' }}>
+      <Card 
+        variant="borderless" 
+        style={{ background: 'transparent' }}
+        styles={{ body: { padding: '48px 0' } }}
+      >
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <Title level={1} style={{ margin: '0 0 16px 0', fontWeight: 800, letterSpacing: '-0.025em', fontSize: '3rem', color: '#111827' }}>
+            Where to next?
+          </Title>
+          <div style={{ color: '#6b7280', fontSize: '1.125rem', fontWeight: 500 }}>
+            Tell us your travel ideas, and our AI will craft the perfect itinerary for you.
+          </div>
+        </div>
           
           <Form
             form={form}
@@ -115,135 +142,243 @@ const GenerateItineraryPage = () => {
             initialValues={{
               transportMode: 'driving',
               durationDays: 3,
+              travelPreference: [],
               spots: [{ name: '', isRequired: true }]
+            }}
+            style={{
+              background: '#ffffff',
+              padding: '40px',
+              borderRadius: '24px',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)',
+              border: '1px solid #f3f4f6'
             }}
           >
             <Form.Item
-              label="旅行标题"
+              label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>行程标题</span>}
               name="title"
-              rules={[{ required: true, message: '请输入旅行标题' }]}
+              rules={[{ required: true, message: '请输入标题' }]}
+              hasFeedback
             >
-              <Input placeholder="例如：三亚五日游" />
+              <Input placeholder="例如：东京五日游" size="large" style={{ borderRadius: 12, background: '#f9fafb' }} />
             </Form.Item>
             
             <Space style={{ display: 'flex', marginBottom: 0 }} align="start">
               <Form.Item
-                label="出发地"
+                label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>出发地</span>}
                 name="origin"
                 style={{ width: '100%' }}
                 rules={[{ required: false }]}
               >
-                <Input placeholder="（选填）例如：广州" prefix={<EnvironmentOutlined />} />
+                <Input placeholder="选填" size="large" style={{ borderRadius: 12, background: '#f9fafb' }} prefix={<EnvironmentOutlined style={{ color: '#9ca3af' }} />} />
               </Form.Item>
 
               <Form.Item
-                label="目的地"
+                label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>目的地</span>}
                 name="destination"
-                rules={[{ required: true, message: '请输入旅行目的地' }]}
+                rules={[{ required: true, message: '请输入目的地' }]}
                 style={{ width: '100%' }}
+                hasFeedback
               >
-                <Input placeholder="例如：三亚" prefix={<EnvironmentOutlined />} />
+                <Input 
+                  placeholder="想去哪里？" 
+                  size="large" 
+                  style={{ borderRadius: 12, background: '#f9fafb' }} 
+                  prefix={<EnvironmentOutlined style={{ color: '#9ca3af' }} />} 
+                  addonAfter={
+                    <Button type="text" size="small" icon={<BulbOutlined />} onClick={handleSurpriseMe} style={{ color: 'var(--primary-color)', fontWeight: 500, border: 'none', background: 'transparent' }}>
+                      随机灵感
+                    </Button>
+                  }
+                />
               </Form.Item>
             </Space>
             
             <Space style={{ display: 'flex', marginBottom: 24 }} align="start">
               <Form.Item
-                label="出发日期"
+                label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>出发日期</span>}
                 name="startDate"
-                rules={[{ required: true, message: '请选择出发日期' }]}
+                rules={[{ required: true, message: '请选择日期' }]}
                 style={{ width: '100%' }}
+                hasFeedback
               >
-                <DatePicker style={{ width: '100%' }} disabledDate={(date) => date.isBefore(dayjs().subtract(1, 'day'))} />
+                <DatePicker size="large" style={{ width: '100%', borderRadius: 12, background: '#f9fafb' }} disabledDate={(date) => date.isBefore(dayjs().subtract(1, 'day'))} />
               </Form.Item>
               
               <Form.Item
-                label="行程天数"
+                label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>游玩天数</span>}
                 name="durationDays"
-                rules={[{ required: true, message: '请输入行程天数' }]}
+                rules={[{ required: true, message: '请输入天数' }]}
                 style={{ width: '100%' }}
+                hasFeedback
               >
-                <InputNumber min={1} max={30} style={{ width: '100%' }} />
+                <InputNumber size="large" min={1} max={30} style={{ width: '100%', borderRadius: 12, background: '#f9fafb' }} />
               </Form.Item>
 
               <Form.Item
-                label="人均预算(元)"
+                label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>人均预算</span>}
                 name="budget"
                 style={{ width: '100%' }}
               >
-                <InputNumber min={0} style={{ width: '100%' }} formatter={value => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={value => (value || '').replace(/¥\s?|(,*)/g, '')} />
+                <InputNumber size="large" min={0} style={{ width: '100%', borderRadius: 12, background: '#f9fafb' }} formatter={value => `¥ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')} parser={value => (value || '').replace(/¥\s?|(,*)/g, '')} />
               </Form.Item>
             </Space>
             
-            <Form.Item
-              label="交通方式"
-              name="transportMode"
-              rules={[{ required: true, message: '请选择景点间的交通方式' }]}
-            >
-              <Select>
-                <Option value="driving">打车</Option>
-                <Option value="walking">步行</Option>
-                <Option value="bicycling">骑行</Option>
-                <Option value="transit">公交</Option>
-              </Select>
-            </Form.Item>
-            
-            <Form.Item
-              label="行程描述"
-              name="description"
-              rules={[{ required: false }]}
-            >
-              <TextArea placeholder="请输入行程描述或特殊要求" rows={4} />
-            </Form.Item>
-            
-            <Divider orientation="left">景点安排</Divider>
-            
-            <Form.List name="spots">
-              {(fields, { add, remove }) => (
-                <>
-                  {fields.map(({ key, name, ...restField }) => (
-                    <Space 
-                      key={key} 
-                      style={{ display: 'flex', marginBottom: 8 }} 
-                      align="baseline"
-                    >
-                      <Form.Item
-                        {...restField}
-                        name={[name, 'name']}
-                        rules={[{ required: true, message: '请输入景点名称' }]}
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>出行方式</span>}
+                  name="transportMode"
+                  rules={[{ required: true, message: '请选择出行方式' }]}
+                >
+                  <Select size="large" style={{ borderRadius: 12 }}>
+                    <Option value="driving">🚗 自驾 / 打车</Option>
+                    <Option value="transit">🚇 公共交通</Option>
+                    <Option value="walking">🚶 步行</Option>
+                    <Option value="bicycling">🚲 骑行</Option>
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>偏好设置</span>}
+                  name="travelPreference"
+                  rules={[{ required: false }]}
+                >
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {PREFERENCES.map((pref) => (
+                      <CheckableTag
+                        key={pref.value}
+                        checked={selectedPrefs.includes(pref.value)}
+                        onChange={(checked) => handlePrefChange(pref.value, checked)}
+                        style={{
+                          border: selectedPrefs.includes(pref.value) ? '1px solid var(--primary-color)' : '1px solid #d1d5db',
+                          background: selectedPrefs.includes(pref.value) ? '#eef2ff' : '#f9fafb',
+                          color: selectedPrefs.includes(pref.value) ? 'var(--primary-color)' : '#4b5563',
+                          padding: '6px 12px',
+                          borderRadius: '20px',
+                          fontSize: '0.9rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s'
+                        }}
                       >
-                        <Input placeholder="景点名称" />
-                      </Form.Item>
-                      
-                      <Form.Item
-                        {...restField}
-                        name={[name, 'isRequired']}
-                        valuePropName="checked"
-                      >
-                        <Select style={{ width: 120 }}>
-                          <Option value={true}>必游景点</Option>
-                          <Option value={false}>可选景点</Option>
-                        </Select>
-                      </Form.Item>
-                      
-                      {fields.length > 1 ? (
-                        <MinusCircleOutlined title="删除景点" aria-label="删除景点" onClick={() => remove(name)} />
-                      ) : null}
-                    </Space>
-                  ))}
-                  
-                  <Form.Item>
-                    <Button 
-                      type="dashed" 
-                      onClick={() => add()} 
-                      block 
-                      icon={<PlusOutlined />}
+                        {pref.label}
+                      </CheckableTag>
+                    ))}
+                  </div>
+                </Form.Item>
+              </Col>
+            </Row>
+            
+            <Collapse 
+              ghost 
+              expandIcon={({ isActive }) => <RightOutlined rotate={isActive ? 90 : 0} style={{ color: '#6b7280' }} />}
+              style={{ background: '#f8fafc', borderRadius: '16px', marginBottom: 24, border: '1px solid #e2e8f0' }}
+              items={[{
+                key: '1',
+                label: <span style={{ fontWeight: 600, color: '#374151' }}>高级选项（指定景点、特殊要求）</span>,
+                children: (
+                  <>
+                    <Form.Item
+                      label={<span style={{ fontWeight: 500, color: '#4b5563' }}>特殊要求</span>}
+                      name="description"
+                      rules={[{ required: false }]}
                     >
-                      添加景点
-                    </Button>
-                  </Form.Item>
-                </>
-              )}
-            </Form.List>
+                      <TextArea placeholder="有任何特殊饮食要求、节奏偏好或想避开的地方吗？" rows={3} style={{ borderRadius: 12, background: '#ffffff', resize: 'none' }} />
+                    </Form.Item>
+                    
+                    <div style={{ color: '#4b5563', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>指定景点</div>
+                    <Form.List name="spots">
+                      {(fields, { add, remove }) => (
+                        <>
+                          {fields.map(({ key, name, ...restField }) => (
+                            <Space 
+                              key={key} 
+                              style={{ display: 'flex', marginBottom: 8 }} 
+                              align="baseline"
+                            >
+                              <Form.Item
+                                {...restField}
+                                name={[name, 'name']}
+                                rules={[{ required: true, message: '请输入景点名称' }]}
+                              >
+                                <Input placeholder="景点名称" style={{ borderRadius: 8, background: '#ffffff' }} />
+                              </Form.Item>
+                              
+                              <Form.Item
+                                {...restField}
+                                name={[name, 'isRequired']}
+                                valuePropName="checked"
+                              >
+                                <Select style={{ width: 100, borderRadius: 8 }}>
+                                  <Option value={true}>必去</Option>
+                                  <Option value={false}>可选</Option>
+                                </Select>
+                              </Form.Item>
+                              
+                              {fields.length > 1 ? (
+                                <MinusCircleOutlined title="移除" aria-label="移除" onClick={() => remove(name)} style={{ color: '#ef4444', fontSize: 18 }} />
+                              ) : null}
+                            </Space>
+                          ))}
+                          
+                          <Form.Item>
+                            <Button 
+                              type="dashed" 
+                              onClick={() => add()} 
+                              block 
+                              icon={<PlusOutlined />}
+                              style={{ borderRadius: 8, borderColor: '#cbd5e1', color: '#64748b' }}
+                            >
+                              添加景点
+                            </Button>
+                          </Form.Item>
+                        </>
+                      )}
+                    </Form.List>
+                  </>
+                )
+              }]}
+            />
+            
+            {loading && progressLogs.length > 0 && (
+              <div style={{ 
+                marginTop: 16, 
+                marginBottom: 24, 
+                padding: '24px', 
+                background: '#f8fafc', 
+                borderRadius: '16px',
+                border: '1px solid #e2e8f0',
+                boxShadow: 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.02)'
+              }}>
+                <div style={{ fontSize: 14, color: 'var(--primary-color)', marginBottom: 16, fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                  <LoadingOutlined style={{ marginRight: 8, fontSize: 18 }} />
+                  AI 正在思考中...
+                </div>
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                  {progressLogs.map((log, index) => {
+                    const isLast = index === progressLogs.length - 1;
+                    return (
+                      <div key={index} style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start',
+                        color: isLast ? '#1e293b' : '#94a3b8',
+                        fontWeight: isLast ? 500 : 400,
+                        opacity: isLast ? 1 : 0.6,
+                        transform: isLast ? 'translateX(4px)' : 'translateX(0)',
+                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)'
+                      }}>
+                        <div style={{ marginRight: 12, marginTop: 2 }}>
+                          {isLast ? <span style={{ color: 'var(--primary-color)' }}>✨</span> : <CheckCircleOutlined style={{ color: '#10b981' }} />}
+                        </div>
+                        <div style={{ flex: 1, lineHeight: 1.5, fontSize: 14 }}>
+                          {log}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </Space>
+              </div>
+            )}
             
             <Form.Item>
               <Button 
@@ -252,51 +387,21 @@ const GenerateItineraryPage = () => {
                 loading={loading}
                 style={{ 
                   width: '100%', 
-                  height: 48, 
-                  fontSize: 16, 
-                  marginTop: 16,
+                  height: 56, 
+                  fontSize: 18, 
+                  marginTop: loading ? 8 : 24,
                   fontWeight: 600,
-                  borderRadius: 'var(--radius-md)'
+                  borderRadius: 16,
+                  background: 'var(--primary-color)',
+                  border: 'none',
+                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)'
                 }}
               >
-                生成旅行攻略
+                {loading ? 'AI 正在努力规划中...' : '✨ 立即生成专属行程'}
               </Button>
             </Form.Item>
           </Form>
         </Card>
-        </Col>
-
-        {/* Right side: List of itineraries */}
-        <Col xs={24} lg={10}>
-          <Card
-            title={<span style={{ fontWeight: 600, fontSize: '1.125rem' }}>我创建的行程</span>}
-            variant="borderless"
-            style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-md)', height: '100%', background: 'var(--card-bg)' }}
-          >
-            <Skeleton loading={listLoading} active avatar>
-              <List
-                itemLayout="horizontal"
-                dataSource={itineraries}
-                locale={{ emptyText: '您还没有创建任何行程' }}
-                renderItem={item => (
-                  <List.Item
-                    actions={[
-                      <Button type="text" danger icon={<DeleteOutlined />} aria-label="删除行程" title="删除行程" onClick={() => handleDeleteItinerary(item.id, item.title)}></Button>,
-                      <Button type="link" style={{ fontWeight: 500 }} icon={<RightOutlined />} onClick={() => navigate(`/itinerary/${item.id}`)}>查看详情</Button>
-                    ]}
-                    style={{ padding: '16px 0', borderBottom: '1px solid var(--border-color)' }}
-                  >
-                    <List.Item.Meta
-                      title={<span style={{ cursor: 'pointer', color: 'var(--text-main)', fontWeight: 600, fontSize: '1rem', transition: 'color 0.2s' }} onClick={() => navigate(`/itinerary/${item.id}`)} onMouseOver={(e) => e.target.style.color = 'var(--primary-color)'} onMouseOut={(e) => e.target.style.color = 'var(--text-main)'}>{item.title}</span>}
-                      description={<span style={{ color: 'var(--text-secondary)' }}>{`${dayjs(item.startDate).format('YYYY-MM-DD')} - ${dayjs(item.endDate).format('YYYY-MM-DD')}`}</span>}
-                    />
-                  </List.Item>
-                )}
-              />
-            </Skeleton>
-          </Card>
-        </Col>
-      </Row>
     </div>
   );
 };

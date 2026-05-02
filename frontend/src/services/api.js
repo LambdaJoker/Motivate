@@ -73,6 +73,11 @@ const itineraryApi = {
   getRouteForDate: (itineraryId, date) => api.get(`/itineraries/${itineraryId}/route?planDate=${date}`),
 };
 
+const llmApi = {
+  getProgress: (taskId) => api.get(`/llm/progress?taskId=${taskId}`),
+  clearProgress: (taskId) => api.get(`/llm/clear-progress?taskId=${taskId}`),
+};
+
 // 高德地图相关API
 const amapApi = {
   // 搜索POI
@@ -106,4 +111,4 @@ const authApi = {
   register: (data) => api.post('/auth/register', data),
 };
 
-export { api as default, itineraryApi, amapApi, authApi }; 
+export { api as default, itineraryApi, amapApi, authApi, llmApi }; 

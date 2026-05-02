@@ -7,6 +7,7 @@ import { AmapService } from '../amap/amap.service';
 import { LlmService } from '../llm/llm.service';
 import { GenerateItineraryDto } from './dto/generate-itinerary.dto';
 import { addDays, format, addHours, addMinutes, set, getHours } from 'date-fns';
+import { getPreferenceDescription } from '../llm/constants/travel-preferences';
 
 @Injectable()
 export class ItineraryService {
@@ -181,9 +182,12 @@ export class ItineraryService {
   }
 
   async generateItinerary(generateDto: GenerateItineraryDto, userId: number, existingItineraryId?: number): Promise<Itinerary> {
-    const { title, description, startDate, durationDays, destination, origin, mustVisitSpots, optionalSpots, transportMode, budget } = generateDto;
+    const { title, description, startDate, durationDays, destination, origin, mustVisitSpots, optionalSpots, transportMode, budget, travelPreference } = generateDto;
     
-    const itineraryPrompt = `Generating itinerary for: ${title} from ${origin || 'N/A'} to ${destination} with budget ¥${budget}`;
+    // 获取旅行偏好描述
+    const prefDescription = travelPreference ? getPreferenceDescription(travelPreference) : '无特别偏好';
+    
+    const itineraryPrompt = `Generating itinerary for: ${title} from ${origin || 'N/A'} to ${destination} with budget ¥${budget}. Travel Preference: ${prefDescription}`;
     this.logger.log(itineraryPrompt);
 
     // 1. 调用大模型生成行程计划
@@ -195,6 +199,7 @@ export class ItineraryService {
       budget: budget || 0,
       mustVisitSpots: [...(mustVisitSpots || []), ...(optionalSpots || [])],
       transportMode: transportMode || 'driving',
+      travelPreference: prefDescription,
       // 把完整的 title 等信息作为上下文传过去（可以通过目的地拼接等方式隐式传递给 prompt）
       fullPromptContext: itineraryPrompt
     } as any);

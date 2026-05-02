@@ -2,19 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Card, Typography, Tabs, Spin, Row, Col, Button, 
-  Divider,
+  Divider, Progress,
   Timeline, Empty, Tag, Space, Statistic, App, Modal
 } from 'antd';
 import { 
   CalendarOutlined, EnvironmentOutlined, CloudOutlined,
   CarOutlined, LinkOutlined, WalletOutlined,
   CheckCircleOutlined, DeleteOutlined, ExclamationCircleOutlined, SyncOutlined,
-  ExpandAltOutlined, ShrinkOutlined
+  ExpandAltOutlined, ShrinkOutlined, CopyOutlined, LoadingOutlined,
+  CoffeeOutlined, HomeOutlined, CameraOutlined, ClockCircleOutlined
 } from '@ant-design/icons';
 import { format, addDays, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import AMap from '../components/AMap';
-import { itineraryApi, amapApi } from '../services/api';
+import api, { itineraryApi, amapApi, llmApi } from '../services/api';
 
 const { Title, Text } = Typography;
 
@@ -22,7 +23,7 @@ const ItineraryDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   // 使用 App.useApp() 获取上下文消费的方法，消除静态调用的警告
-  const { message, modal } = App.useApp();
+  const { message, modal, notification } = App.useApp();
   
   const [loading, setLoading] = useState(true);
   const [itinerary, setItinerary] = useState(null);
@@ -33,7 +34,41 @@ const ItineraryDetailPage = () => {
   const [amapLink, setAmapLink] = useState('');
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [progressLogs, setProgressLogs] = useState([]);
+  const [taskId, setTaskId] = useState('');
   
+  // 设置网页标题
+  useEffect(() => {
+    if (itinerary?.title) {
+      document.title = `${itinerary.title} - TripAgent`;
+    } else {
+      document.title = 'TripAgent';
+    }
+    
+    return () => {
+      document.title = 'TripAgent';
+    };
+  }, [itinerary]);
+
+  React.useEffect(() => {
+    let intervalId;
+    if (regenerating && taskId) {
+      intervalId = setInterval(async () => {
+        try {
+          const res = await llmApi.getProgress(taskId);
+          if (res.logs && res.logs.length > 0) {
+            setProgressLogs(res.logs);
+          }
+        } catch (e) {
+          console.error('获取进度失败', e);
+        }
+      }, 1500);
+    }
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [regenerating, taskId]);
+
   // 获取行程详情
   useEffect(() => {
     const fetchItinerary = async () => {
@@ -43,7 +78,7 @@ const ItineraryDetailPage = () => {
         
         // Ensure data exists before accessing its properties
         if (!data) {
-          throw new Error('未获取到行程数据');
+          throw new Error('Failed to load itinerary data');
         }
         
         setItinerary(data);
@@ -69,7 +104,7 @@ const ItineraryDetailPage = () => {
         
       } catch (error) {
         console.error('获取行程详情失败:', error);
-        message.error('获取行程详情失败');
+        message.error('加载行程详情失败');
       } finally {
         setLoading(false);
       }
@@ -102,7 +137,7 @@ const ItineraryDetailPage = () => {
     });
     
     setActiveDateItems(sortedItems);
-    // 重置选中的地点
+    // 重置选中的地点，这样每次切日期都会默认纵览全图
     setSelectedTimelineSpot(null);
   }, [activeDate, itinerary]);
 
@@ -214,14 +249,17 @@ const ItineraryDetailPage = () => {
     try {
       setWeatherLoading(true);
       const weather = await amapApi.getWeather(city);
-      // 这里可以实现展示天气的逻辑，比如弹窗显示
       if (weather) {
-        let weatherInfo = '暂无天气信息';
         if (weather.lives && weather.lives.length > 0) {
           const live = weather.lives[0];
-          weatherInfo = `${live.city}：${live.weather}，气温 ${live.temperature}℃，${live.winddirection}风 ${live.windpower}级`;
+          notification.info({
+            message: `${live.city} 当前天气`,
+            description: `${live.weather} | ${live.temperature}℃ | 风向: ${live.winddirection} ${live.windpower} | 湿度: ${live.humidity}%`,
+            placement: 'topRight',
+          });
+        } else {
+          message.info('暂无天气信息');
         }
-        message.info(weatherInfo);
       }
     } catch (error) {
       console.error('获取天气信息失败:', error);
@@ -267,7 +305,7 @@ const ItineraryDetailPage = () => {
           window.open(result.url, '_blank');
         }
       } else {
-        message.info('这已经是当天最后一个景点了');
+        message.info('这是今天的最后一个景点');
       }
     } catch (error) {
       console.error('生成导航链接失败:', error);
@@ -290,7 +328,7 @@ const ItineraryDetailPage = () => {
         throw new Error('Invalid date');
       }
     } catch(e) {
-      return <Empty description="行程日期数据异常" />;
+      return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="行程日期数据异常" />;
     }
     
     const diffDays = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
@@ -334,37 +372,40 @@ const ItineraryDetailPage = () => {
         key: dateStr,
         forceRender: true, // 强制渲染所有 TabPane 内容，防止高德地图获取不到尺寸报错
         label: (
-          <div style={{ padding: '4px 8px' }}>
-            <div style={{ fontWeight: 600, fontSize: '1.125rem', marginBottom: 4 }}>第{i + 1}天</div>
-            <div style={{ fontSize: '0.875rem', opacity: 0.8 }}>{formattedDate} {dayOfWeek}</div>
+          <div style={{ padding: '6px 12px' }}>
+            <div style={{ fontWeight: 700, fontSize: '1.25rem', marginBottom: 2 }}>Day {i + 1}</div>
+            <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>{formattedDate}</div>
           </div>
         ),
         children: (
-          <Row gutter={[24, 24]}>
-            <Col xs={24} lg={8}>
+          <Row gutter={[24, 24]} style={{ minHeight: '600px', display: 'flex', alignItems: 'stretch' }}>
+            <Col xs={24} lg={10} xl={9} style={{ display: 'flex', flexDirection: 'column' }}>
               <Card 
-                title={<span style={{ fontWeight: 600 }}>行程安排</span>} 
+                title={<span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#1e293b' }}>行程安排</span>} 
                 extra={
                   <Button 
                     type="text" 
                     icon={timelineExpanded ? <ShrinkOutlined /> : <ExpandAltOutlined />} 
                     onClick={() => setTimelineExpanded(!timelineExpanded)}
+                    style={{ color: '#64748b', fontWeight: 500 }}
+                    className="hover-bg-slate-100"
                   >
-                    {timelineExpanded ? '收起详情' : '展开详情'}
+                    {timelineExpanded ? '收起全部' : '展开全部'}
                   </Button>
                 }
                 variant="borderless" 
                 className="timeline-card" 
-                style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)' }}
+                style={{ borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)', height: '100%', flex: 1, overflowY: 'auto', backgroundColor: '#ffffff' }}
+                styles={{ header: { borderBottom: '1px solid #f1f5f9', padding: '16px 20px' }, body: { padding: '20px 8px 20px 20px' } }}
               >
                 {renderDateContent(dateItems)}
               </Card>
             </Col>
-            <Col xs={24} lg={16}>
+            <Col xs={24} lg={14} xl={15} style={{ display: 'flex', flexDirection: 'column' }}>
               {/* 高德地图如果放在 display:none 的容器里会获取不到宽高而报错，
                   所以我们强制渲染了 Tab，但这里只给当前激活的 Tab 传递路线数据 */}
               {/* 这里不再做 display none 切换，而是直接渲染 mapCard，里面的 AMap 自己判断是否渲染 */}
-              <div style={{ width: '100%', height: '100%', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', position: 'relative' }}>
+              <div style={{ width: '100%', flex: 1, minHeight: '400px', borderRadius: 'var(--radius-lg)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)', position: 'relative', backgroundColor: '#f8fafc' }}>
                 {routeLoading && activeDate === dateStr && (
                   <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <Spin tip="路线规划计算中..." />
@@ -374,23 +415,27 @@ const ItineraryDetailPage = () => {
               </div>
               
               {routeData && activeDate === dateStr && (
-                <Card style={{ marginTop: 16, borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)' }} size="small">
-                  <Row justify="space-around">
+                <Card style={{ marginTop: 16, borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }} size="small" styles={{ body: { padding: '12px 24px' } }}>
+                  <Row justify="space-around" align="middle">
                     <Col>
                       <Statistic 
-                        title={<span style={{ color: 'var(--text-secondary)' }}>总距离</span>} 
+                        title={<span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>驾车总距离</span>} 
                         value={(routeData.distance / 1000).toFixed(1)} 
-                        suffix="公里" 
-                        prefix={<CarOutlined style={{ color: 'var(--primary-color)' }} />}
-                        valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }}
+                        suffix={<span style={{ fontSize: '0.9rem', color: '#64748b', marginLeft: 4 }}>km</span>} 
+                        prefix={<EnvironmentOutlined style={{ color: 'var(--primary-color)', fontSize: '1.1rem', marginRight: 8 }} />}
+                        valueStyle={{ fontWeight: 800, color: '#1e293b', fontSize: '1.25rem', fontFamily: 'monospace' }}
                       />
                     </Col>
                     <Col>
+                      <Divider type="vertical" style={{ height: 32, borderColor: '#e2e8f0' }} />
+                    </Col>
+                    <Col>
                       <Statistic 
-                        title={<span style={{ color: 'var(--text-secondary)' }}>预计车程</span>} 
+                        title={<span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 500 }}>预计驾车时间</span>} 
                         value={Math.ceil(routeData.duration / 60)} 
-                        suffix="分钟" 
-                        valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }}
+                        suffix={<span style={{ fontSize: '0.9rem', color: '#64748b', marginLeft: 4 }}>分钟</span>} 
+                        prefix={<ClockCircleOutlined style={{ color: 'var(--primary-color)', fontSize: '1.1rem', marginRight: 8 }} />}
+                        valueStyle={{ fontWeight: 800, color: '#1e293b', fontSize: '1.25rem', fontFamily: 'monospace' }}
                       />
                     </Col>
                   </Row>
@@ -406,14 +451,16 @@ const ItineraryDetailPage = () => {
       <Tabs 
         activeKey={activeDate || (tabs.length > 0 ? tabs[0].key : undefined)} 
         onChange={setActiveDate}
-        type="card"
+        type="line"
         size="large"
         style={{ marginBottom: 24 }}
+        tabBarStyle={{ marginBottom: 24 }}
         items={tabs.length > 0 ? tabs : [{
           key: 'empty',
-          label: '暂无行程',
-          children: <Empty description="无法解析任何有效行程日期" />
+          label: '暂无数据',
+          children: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无法解析行程日期" style={{ margin: '64px 0' }} />
         }]}
+        className="date-tabs"
       />
     );
   };
@@ -421,12 +468,45 @@ const ItineraryDetailPage = () => {
   // 渲染日期内容
   const renderDateContent = (dateItems) => {
     if (!dateItems || dateItems.length === 0) {
-      return <Empty description="当天没有安排行程" style={{ margin: '40px 0' }} />;
+      return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天暂无行程安排" style={{ margin: '64px 0' }} />;
     }
+
+    const getItemIcon = (type, isSelected) => {
+      let Icon = EnvironmentOutlined;
+      let color = 'var(--primary-color)';
+      switch(type) {
+        case 'transport': Icon = CarOutlined; color = '#10b981'; break; // 绿色
+        case 'food': Icon = CoffeeOutlined; color = '#f59e0b'; break; // 橙色
+        case 'accommodation': Icon = HomeOutlined; color = '#8b5cf6'; break; // 紫色
+        case 'activity':
+        default: Icon = CameraOutlined; color = '#3b82f6'; break; // 蓝色
+      }
+      if (isSelected) color = '#4F46E5'; // 选中为主色
+      
+      return (
+        <div style={{
+          background: isSelected ? '#4F46E5' : '#ffffff',
+          color: isSelected ? '#ffffff' : color,
+          width: 36,
+          height: 36,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          border: `2px solid ${isSelected ? '#4F46E5' : `${color}40`}`,
+          boxShadow: isSelected ? '0 0 0 6px #e0e7ff' : '0 2px 4px rgba(0,0,0,0.05)',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          transform: isSelected ? 'scale(1.15)' : 'scale(1)',
+          zIndex: 2
+        }}>
+          <Icon style={{ fontSize: '18px' }} />
+        </div>
+      );
+    };
     
     return (
       <Timeline
-        style={{ marginTop: 16 }}
+        style={{ marginTop: 24, paddingLeft: 12 }}
         items={dateItems.map(item => {
           let timeStr = '未定时间';
           if (item.startTime) {
@@ -441,47 +521,102 @@ const ItineraryDetailPage = () => {
           
           return {
             key: item.id,
-            color: isSelected ? '#FF4D4F' : 'var(--primary-color)',
-            dot: isSelected ? <EnvironmentOutlined style={{ fontSize: '18px', color: '#FF4D4F' }} /> : null,
+            dot: getItemIcon(item.itemType, isSelected),
             children: (
               <div 
+                className={`timeline-item-container ${isSelected ? 'selected' : ''}`}
                 style={{ 
-                  paddingBottom: 16, 
+                  paddingBottom: 24, 
                   cursor: 'pointer',
-                  padding: '8px 12px',
-                  borderRadius: '8px',
-                  backgroundColor: isSelected ? 'var(--bg-light)' : 'transparent',
-                  transition: 'all 0.3s ease'
+                  padding: '16px 20px',
+                  borderRadius: '16px',
+                  marginLeft: 12,
+                  marginBottom: 16,
+                  backgroundColor: isSelected ? '#eef2ff' : '#ffffff',
+                  border: '1px solid',
+                  borderColor: isSelected ? '#c7d2fe' : 'transparent',
+                  boxShadow: isSelected ? '0 8px 16px -4px rgba(79, 70, 229, 0.15), 0 4px 6px -2px rgba(79, 70, 229, 0.05)' : 'none',
+                  position: 'relative',
+                  zIndex: isSelected ? 1 : 0
+                }}
+                onMouseEnter={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.backgroundColor = '#f8fafc';
+                    e.currentTarget.style.borderColor = '#f1f5f9';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isSelected) {
+                    e.currentTarget.style.backgroundColor = '#ffffff';
+                    e.currentTarget.style.borderColor = 'transparent';
+                  }
                 }}
                 onClick={() => setSelectedTimelineSpot(item)}
               >
-                <p style={{ margin: showDetails ? '0 0 8px 0' : '0', fontSize: '1.05rem', display: 'flex', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--primary-color)', marginRight: 12, minWidth: '48px', whiteSpace: 'nowrap' }}>{timeStr}</span>
-                  <span style={{ fontWeight: 600, color: 'var(--text-main)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</span>
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: showDetails ? 12 : 0 }}>
+                  <div style={{ 
+                    fontWeight: 700, 
+                    color: isSelected ? '#4F46E5' : '#64748b', 
+                    marginRight: 16, 
+                    minWidth: '54px',
+                    fontSize: '0.95rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    letterSpacing: '0.02em',
+                    transition: 'all 0.2s ease'
+                  }}>
+                    {timeStr}
+                  </div>
+                  <div style={{ 
+                    fontWeight: isSelected ? 700 : 600, 
+                    color: isSelected ? '#312e81' : '#374151', 
+                    flex: 1, 
+                    fontSize: '1.1rem',
+                    whiteSpace: showDetails ? 'normal' : 'nowrap', 
+                    overflow: showDetails ? 'visible' : 'hidden', 
+                    textOverflow: showDetails ? 'clip' : 'ellipsis',
+                    transition: 'all 0.2s ease'
+                  }}>
+                    {item.title}
+                  </div>
+                </div>
                 
                 {/* 折叠/展开区域 */}
                 <div style={{ 
-                  maxHeight: showDetails ? '500px' : '0', 
+                  maxHeight: showDetails ? '800px' : '0', 
                   overflow: 'hidden', 
                   opacity: showDetails ? 1 : 0,
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
                 }}>
-                  {item.description && <Text type="secondary" style={{ display: 'block', marginBottom: 8, lineHeight: 1.5 }}>{item.description}</Text>}
-                  <Space wrap style={{ marginTop: 8 }}>
+                  {item.description && (
+                    <div style={{ 
+                      padding: '12px 16px', 
+                      background: isSelected ? '#ffffff' : '#f8fafc', 
+                      borderRadius: 12, 
+                      marginBottom: 16,
+                      marginTop: 4,
+                      color: isSelected ? '#3730a3' : '#475569',
+                      fontSize: '0.95rem',
+                      lineHeight: 1.6,
+                      borderLeft: `4px solid ${isSelected ? '#4F46E5' : '#cbd5e1'}`
+                    }}>
+                      {item.description}
+                    </div>
+                  )}
+                  <Space wrap style={{ marginTop: 4, rowGap: 8 }}>
                     {item.estimatedCost > 0 && (
-                      <Tag icon={<WalletOutlined />} color="orange" style={{ borderRadius: 4, border: 'none', background: '#fff7e6', color: '#d46b08' }}>
-                        预估花费: ¥{item.estimatedCost}
+                      <Tag icon={<WalletOutlined />} style={{ borderRadius: 8, padding: '4px 10px', background: '#fff7e6', color: '#d46b08', borderColor: '#ffd591', fontSize: '0.85rem' }}>
+                        ¥{item.estimatedCost}
                       </Tag>
                     )}
                     {item.durationMinutes > 0 && (
-                      <Tag color="blue" style={{ borderRadius: 4, border: 'none', background: '#e6f7ff', color: '#0958d9' }}>
-                        预计: {item.durationMinutes}分钟
+                      <Tag icon={<ClockCircleOutlined />} style={{ borderRadius: 8, padding: '4px 10px', background: '#f0fdf4', color: '#047857', borderColor: '#a7f3d0', fontSize: '0.85rem' }}>
+                        {item.durationMinutes} 分钟
                       </Tag>
                     )}
                     <Button 
                       type="primary" 
-                      ghost
                       size="small"
                       shape="round"
                       icon={<CarOutlined />}
@@ -489,8 +624,9 @@ const ItineraryDetailPage = () => {
                         e.stopPropagation(); // 阻止事件冒泡，避免触发选中节点
                         handleNavigate(item);
                       }}
+                      style={{ marginLeft: 4, fontWeight: 500, boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)' }}
                     >
-                      导航
+                      导航前往
                     </Button>
                   </Space>
                 </div>
@@ -505,7 +641,7 @@ const ItineraryDetailPage = () => {
   // 渲染地图
   const renderMap = (items = activeDateItems, route = null, dateStr = activeDate) => {
     if (!items || !items.length) {
-      return <Empty description="当天没有行程安排，无法显示地图" />;
+      return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无行程数据，无法显示地图" style={{ margin: '100px 0' }} />;
     }
     
     const validItems = items.filter(item => 
@@ -514,7 +650,7 @@ const ItineraryDetailPage = () => {
     );
 
     if (!validItems.length) {
-      return <Empty description="当天行程没有有效的地理位置数据" />;
+      return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="无有效的地理位置数据" style={{ margin: '100px 0' }} />;
     }
 
     const mapMarkers = validItems.map((item, index) => {
@@ -522,31 +658,68 @@ const ItineraryDetailPage = () => {
       if (item.startTime) {
         try {
           // 这里使用 parseISO 而不是直接 new Date，处理某些浏览器对特定时间字符串格式的兼容问题
-          formattedTime = `<p>计划时间: ${format(parseISO(item.startTime), 'HH:mm', { locale: zhCN })}</p>`;
+          formattedTime = `<p>时间: ${format(parseISO(item.startTime), 'HH:mm', { locale: zhCN })}</p>`;
         } catch(e) {}
       }
       const isSelected = selectedTimelineSpot?.id === item.id;
+      
+      // 使用更精美的自定义图标
+      let markerColor = '#4f46e5'; // 默认主色调
+      if (isSelected) {
+        markerColor = '#ec4899'; // 选中为粉色以突出显示
+      } else {
+        switch(item.itemType) {
+          case 'transport': markerColor = '#10b981'; break;
+          case 'food': markerColor = '#f59e0b'; break;
+          case 'accommodation': markerColor = '#8b5cf6'; break;
+          case 'activity': default: markerColor = '#3b82f6'; break;
+        }
+      }
+      
+      const customIcon = `
+        <div style="
+          width: ${isSelected ? '32px' : '24px'}; 
+          height: ${isSelected ? '32px' : '24px'}; 
+          background-color: ${markerColor}; 
+          border-radius: 50%; 
+          border: 3px solid white; 
+          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: ${isSelected ? '14px' : '12px'};
+          transition: all 0.3s ease;
+          transform-origin: center bottom;
+        ">
+          ${index + 1}
+        </div>
+      `;
+
       return {
         longitude: Number(item.longitude),
         latitude: Number(item.latitude),
         title: item.locationName,
-        icon: isSelected 
-          ? 'https://webapi.amap.com/theme/v1.3/markers/n/mark_r.png'
-          : 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
+        icon: customIcon,
+        isCustomIcon: true,
         infoWindow: `
-          <div>
-            <h3>${item.locationName}</h3>
-            <p>${item.notes || ''}</p>
-            ${formattedTime}
+          <div style="padding: 4px; min-width: 150px;">
+            <h3 style="margin-top: 0; margin-bottom: 8px; color: #111827; font-size: 16px; border-bottom: 2px solid ${markerColor}; padding-bottom: 4px; display: inline-block;">${item.locationName}</h3>
+            <p style="margin-bottom: 4px; color: #4b5563; font-size: 14px;">${item.notes || ''}</p>
+            ${formattedTime ? `<p style="margin-bottom: 0; color: ${markerColor}; font-weight: 600; font-size: 13px;">${formattedTime}</p>` : ''}
           </div>
         `
       };
     });
     
     // 重新设计：给每个日期的地图加一个强制的 Key，让 React 在切换 Tabs 时完全卸载并重新创建 AMap
-    // 注意：这里不再将 selectedTimelineSpot 放入 mapKey 中，防止点击卡片时整个地图组件被卸载重刷！
+    // 注意：如果只是选中状态变化，不改变 key，这样地图就能平滑过渡缩放
     const mapKey = `amap-${dateStr}-${route ? 'with-route' : 'no-route'}`;
     const currentCenter = selectedTimelineSpot || validItems[0] || null;
+    
+    // 只有在没有选中特定卡片且没有正在加载路线的情况下，才自动居中适应所有的点
+    const shouldAutoFitView = !selectedTimelineSpot && !routeLoading;
     
     // 如果没有选中特定的卡片，并且有多个点，为了能在视野里看到全貌，应该降低缩放级别
     // 我们将其调整为当未选中时 zoom = 10 (约50公里视野，能看清整个城市/县域和远郊景点)
@@ -554,62 +727,109 @@ const ItineraryDetailPage = () => {
     const currentZoom = selectedTimelineSpot ? 14 : 10;
 
     return (
-      <Card variant="borderless" style={{ width: '100%', minHeight: '500px' }}>
+      <div style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 }}>
         {activeDate === dateStr && (
           <AMap 
             key={mapKey}
             center={currentCenter} 
             zoom={currentZoom}
-            autoFitView={!selectedTimelineSpot}
+            autoFitView={shouldAutoFitView}
             markers={mapMarkers}
             polyline={route ? { path: route.path } : null}
-            style={{ height: '500px', width: '100%' }}
+            style={{ height: '100%', width: '100%' }}
             mapKey={process.env.REACT_APP_AMAP_KEY}
           />
         )}
-      </Card>
+      </div>
     );
   };
   
   const handleRegenerateItinerary = () => {
+    const currentTaskId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setTaskId(currentTaskId);
+    setProgressLogs(['准备启动 AI 引擎重新规划...']);
+
     modal.confirm({
-      title: '重新规划行程',
+      title: '重新生成行程',
       icon: <SyncOutlined style={{ color: 'var(--primary-color)' }} />,
-      content: '系统将使用您当初填写的参数重新生成一份全新的行程安排，当前行程将会被覆盖，是否继续？',
+      content: '系统将使用您的原始参数生成全新的行程。您当前的计划将被覆盖。是否继续？',
       okText: '重新生成',
       cancelText: '取消',
       onOk: async () => {
         try {
           setRegenerating(true);
-          await itineraryApi.regenerateItinerary(id);
-          message.success('行程重新规划成功！');
+          // 调用新的带 taskId 的接口（注意，我们假设后端 controller 会把 query 里的 taskId 传进去，但这需要你确认后端实现。由于我刚刚改了 controller，所以这里要在 api 层传递）
+          // 前面我们改的 api.js 还没有给 regenerate 传 taskId，没关系，这里我们直接把 taskId 拼在 url 里。
+          await api.post(`/itineraries/${id}/regenerate?taskId=${currentTaskId}`);
+          message.success('行程重新生成成功！');
           // 原地刷新以展示最新行程
           window.location.reload();
         } catch (error) {
-          console.error('重新生成行程失败:', error);
-          message.error('重新生成行程失败，可能原始参数已丢失');
+          console.error('Failed to regenerate:', error);
+          message.error('重新生成行程失败，可能是因为找不到原始参数');
         } finally {
           setRegenerating(false);
+          try {
+            await llmApi.clearProgress(currentTaskId);
+          } catch (e) {}
         }
       },
     });
   };
 
+  const handleCopyText = () => {
+    if (!itinerary) return;
+    
+    let text = `# ✈️ ${itinerary.title}\n\n`;
+    text += `**📅 日期:** ${format(parseISO(itinerary.startDate), 'yyyy-MM-dd')} 至 ${format(parseISO(itinerary.endDate), 'yyyy-MM-dd')}\n`;
+    if (itinerary.budget > 0) {
+      text += `**💰 预算:** ¥${itinerary.budget} / **预估花费:** ¥${itinerary.estimatedCost}\n`;
+    }
+    text += `\n---\n\n`;
+    
+    const dateGrouped = groupItemsByDate(itinerary.planItems);
+    Object.keys(dateGrouped).sort().forEach((date, index) => {
+      text += `### 📍 Day ${index + 1} (${date})\n\n`;
+      const items = dateGrouped[date].sort((a, b) => {
+        if (a.orderIndex != null && b.orderIndex != null) return a.orderIndex - b.orderIndex;
+        if (a.startTime && b.startTime) return parseISO(a.startTime).getTime() - parseISO(b.startTime).getTime();
+        return 0;
+      });
+      
+      items.forEach(item => {
+        const timeStr = item.startTime ? format(parseISO(item.startTime), 'HH:mm') : '未定时间';
+        text += `- **[${timeStr}] ${item.title}**\n`;
+        if (item.description) text += `  > 📝 ${item.description}\n`;
+        if (item.estimatedCost > 0) text += `  > 💵 花费: ¥${item.estimatedCost}\n`;
+      });
+      text += `\n`;
+    });
+    
+    text += `\n*💡 Generated by TripAgent*`;
+    
+    navigator.clipboard.writeText(text).then(() => {
+      message.success('行程已复制到剪贴板');
+    }).catch(() => {
+      message.error('复制失败，请重试');
+    });
+  };
+
   const handleDeleteItinerary = () => {
     modal.confirm({
-      title: '确认删除',
+      title: '删除行程',
       icon: <ExclamationCircleOutlined style={{ color: '#DC2626' }} />,
-      content: '确定要删除这个旅行攻略吗？此操作不可恢复。',
-      okText: '确认删除',
+      content: '确定要删除此行程吗？此操作无法撤销。',
+      okText: '删除',
       okType: 'danger',
       cancelText: '取消',
       onOk: async () => {
         try {
           await itineraryApi.deleteItinerary(id);
-          message.success('行程已成功删除');
+          message.success('行程删除成功');
+          window.dispatchEvent(new Event('refresh-itineraries'));
           navigate('/generate', { replace: true });
         } catch (error) {
-          console.error('删除行程失败:', error);
+          console.error('Failed to delete trip:', error);
           message.error('删除行程失败，请重试');
         }
       },
@@ -620,8 +840,8 @@ const ItineraryDetailPage = () => {
   const renderPageHeader = () => {
     if (!itinerary) return null;
     
-    let startDateStr = '未定开始日期';
-    let endDateStr = '未定结束日期';
+    let startDateStr = '待定';
+    let endDateStr = '待定';
     
     if (itinerary.startDate) {
       try { startDateStr = format(parseISO(itinerary.startDate), 'yyyy-MM-dd'); } catch(e) {}
@@ -630,6 +850,10 @@ const ItineraryDetailPage = () => {
       try { endDateStr = format(parseISO(itinerary.endDate), 'yyyy-MM-dd'); } catch(e) {}
     }
     
+    const percent = itinerary.budget > 0 ? Math.min(100, Math.round((itinerary.estimatedCost / itinerary.budget) * 100)) : 0;
+    const isOverBudget = itinerary.estimatedCost > itinerary.budget;
+    const progressStatus = isOverBudget ? 'exception' : 'normal';
+    
     return (
       <Card 
         style={{ marginBottom: 24, borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border-color)' }}
@@ -637,51 +861,66 @@ const ItineraryDetailPage = () => {
       >
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} md={14}>
-            <Title level={2} style={{ margin: 0, fontWeight: 700, color: 'var(--text-main)' }}>
-              <EnvironmentOutlined style={{ color: 'var(--primary-color)' }} /> {itinerary.title}
+            <Title level={2} style={{ margin: 0, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #4F46E5 0%, #ec4899 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px -4px rgba(79, 70, 229, 0.4)' }}>
+                <EnvironmentOutlined style={{ fontSize: 24 }} /> 
+              </div>
+              {itinerary.title}
             </Title>
-            <Text type="secondary" style={{ display: 'inline-block', marginTop: 8, fontSize: '1rem' }}>
-              <CalendarOutlined style={{ marginRight: 8 }} />
-              {startDateStr} 至 {endDateStr}
-            </Text>
+            <Space size="middle" style={{ marginTop: 16 }}>
+              <Tag icon={<CalendarOutlined />} style={{ borderRadius: 6, padding: '4px 10px', fontSize: '0.95rem', border: 'none', background: '#f3f4f6', color: '#4b5563' }}>
+                {startDateStr} 至 {endDateStr}
+              </Tag>
+              {itinerary.budget > 0 && (
+                <Tag color={isOverBudget ? 'error' : 'success'} style={{ borderRadius: 6, padding: '4px 10px', fontSize: '0.95rem', border: 'none' }}>
+                  {isOverBudget ? '超支预警' : '预算健康'}
+                </Tag>
+              )}
+            </Space>
           </Col>
           <Col xs={24} md={10} style={{ textAlign: 'right' }}>
-            <Space size="middle" wrap>
-              <Button icon={<SyncOutlined />} onClick={handleRegenerateItinerary} loading={regenerating} style={{ borderRadius: 'var(--radius-md)' }}>
-                重新规划
+            <Space size="small" wrap>
+              <Button icon={<CopyOutlined />} onClick={handleCopyText} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
+                复制
               </Button>
-              <Button icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink} style={{ borderRadius: 'var(--radius-md)' }}>
+              <Button icon={<SyncOutlined />} onClick={handleRegenerateItinerary} loading={regenerating} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
+                重新生成
+              </Button>
+              <Button type="primary" icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
                 分享
               </Button>
-              <Button icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading} style={{ borderRadius: 'var(--radius-md)' }}>
+              <Button icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
                 天气
               </Button>
-              <Button danger icon={<DeleteOutlined />} onClick={handleDeleteItinerary} style={{ borderRadius: 'var(--radius-md)' }}>
+              <Button danger type="text" icon={<DeleteOutlined />} onClick={handleDeleteItinerary} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
                 删除
               </Button>
             </Space>
           </Col>
         </Row>
+        
         {itinerary.budget > 0 && (
-          <>
-            <Divider style={{ marginTop: 24, marginBottom: 24, borderColor: 'var(--border-color)' }} />
-            <Row gutter={[24, 24]}>
+          <div style={{ marginTop: 24, padding: '16px 20px', background: '#f8fafc', borderRadius: 12 }}>
+            <Row gutter={[24, 24]} align="middle">
               <Col xs={12} md={8}>
-                <Statistic title={<span style={{ color: 'var(--text-secondary)' }}>人均预算</span>} value={itinerary.budget} prefix="¥" valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }} />
+                <Statistic title={<span style={{ color: 'var(--text-secondary)' }}>人均预算</span>} value={itinerary.budget} prefix="¥" valueStyle={{ fontWeight: 700, color: 'var(--text-main)', fontSize: 20 }} />
               </Col>
               <Col xs={12} md={8}>
-                <Statistic title={<span style={{ color: 'var(--text-secondary)' }}>预估总花费</span>} value={itinerary.estimatedCost} prefix="¥" valueStyle={{ fontWeight: 600, color: 'var(--text-main)' }} />
+                <Statistic title={<span style={{ color: 'var(--text-secondary)' }}>预估花费</span>} value={itinerary.estimatedCost} prefix="¥" valueStyle={{ fontWeight: 700, color: isOverBudget ? '#ef4444' : 'var(--text-main)', fontSize: 20 }} />
               </Col>
               <Col xs={24} md={8}>
-                <Statistic 
-                  title={<span style={{ color: 'var(--text-secondary)' }}>预算充足</span>} 
-                  value={itinerary.budget >= itinerary.estimatedCost ? '是' : '否'} 
-                  valueStyle={{ color: itinerary.budget >= itinerary.estimatedCost ? '#059669' : '#DC2626', fontWeight: 600 }}
-                  prefix={itinerary.budget >= itinerary.estimatedCost ? <CheckCircleOutlined /> : <WalletOutlined />}
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 4 }}>预算使用情况 ({percent}%)</div>
+                <Progress 
+                  percent={percent} 
+                  status={progressStatus} 
+                  strokeColor={isOverBudget ? '#ef4444' : { '0%': '#4F46E5', '100%': '#ec4899' }}
+                  strokeWidth={10}
+                  trailColor="#f1f5f9"
+                  showInfo={false}
                 />
               </Col>
             </Row>
-          </>
+          </div>
         )}
       </Card>
     );
@@ -700,6 +939,40 @@ const ItineraryDetailPage = () => {
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       {renderPageHeader()}
       
+      {regenerating && progressLogs.length > 0 && (
+        <Card 
+          style={{ marginBottom: 24, borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-sm)', border: '1px solid var(--primary-color)' }}
+        >
+          <div style={{ fontSize: 13, color: 'var(--primary-color)', marginBottom: 12, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <SyncOutlined spin style={{ marginRight: 8 }} />
+            AI 正在重新规划行程...
+          </div>
+          <Space direction="vertical" size={8} style={{ width: '100%' }}>
+            {progressLogs.map((log, index) => {
+              const isLast = index === progressLogs.length - 1;
+              return (
+                <div key={index} style={{ 
+                  display: 'flex', 
+                  alignItems: 'flex-start',
+                  color: isLast ? '#0f172a' : '#94a3b8',
+                  fontWeight: isLast ? 500 : 400,
+                  opacity: isLast ? 1 : 0.7,
+                  transform: isLast ? 'translateY(0)' : 'translateY(-2px)',
+                  transition: 'all 0.3s ease'
+                }}>
+                  <div style={{ marginRight: 12, marginTop: 2 }}>
+                    {isLast ? <LoadingOutlined style={{ color: 'var(--primary-color)' }} /> : <CheckCircleOutlined style={{ color: '#10b981' }} />}
+                  </div>
+                  <div style={{ flex: 1, lineHeight: 1.5, fontSize: 14 }}>
+                    {log}
+                  </div>
+                </div>
+              );
+            })}
+          </Space>
+        </Card>
+      )}
+
       <Row gutter={[24, 24]}>
         <Col span={24}>
           {renderDateTabs()}
@@ -720,12 +993,12 @@ const ItineraryDetailPage = () => {
         {amapLink ? (
           <div style={{ textAlign: 'center' }}>
             <div style={{ marginBottom: 16 }}>
-              <Text>使用高德地图扫描下方二维码，查看完整行程</Text>
+              <Text>使用高德地图扫码查看完整路线</Text>
             </div>
             <div>
               <img 
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(amapLink)}`} 
-                alt="高德地图行程二维码" 
+                alt="Amap Route QR Code" 
                 style={{ width: 200, height: 200 }}
               />
             </div>
@@ -741,7 +1014,7 @@ const ItineraryDetailPage = () => {
         ) : (
           <div style={{ textAlign: 'center' }}>
             <Spin />
-            <div style={{ marginTop: 16 }}>生成分享码中...</div>
+            <div style={{ marginTop: 16 }}>正在生成分享码...</div>
           </div>
         )}
       </Modal>

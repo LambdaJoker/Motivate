@@ -117,6 +117,7 @@ const AMap = ({
 
   // 更新地图中心点和缩放级别
   useEffect(() => {
+    let isMounted = true;
     if (!mapInstance || mapInstance.CLASS_NAME !== 'AMap.Map' || !mapReady) return;
     
     if (center && center.longitude != null && center.latitude != null) {
@@ -124,14 +125,20 @@ const AMap = ({
       const lat = Number(center.latitude);
       
       if (!isNaN(lng) && !isNaN(lat)) {
-        try {
-          // 使用 setTimeout 确保在画点逻辑之后执行，避免被 autoFitView 覆盖
-          setTimeout(() => {
-            mapInstance.setZoomAndCenter(zoom, [lng, lat]);
-          }, 300);
-        } catch (error) {
-          console.warn('更新地图中心点失败:', error);
-        }
+        // 使用 setTimeout 确保在画点逻辑之后执行，避免被 autoFitView 覆盖
+        const timer = setTimeout(() => {
+          if (!isMounted) return;
+          try {
+            mapInstance.setZoomAndCenter(zoom, [lng, lat], false, 600); // 增加动画时间参数，使缩放和平移更平滑
+          } catch (error) {
+            console.warn('更新地图中心点失败:', error);
+          }
+        }, 300);
+
+        return () => {
+          isMounted = false;
+          clearTimeout(timer);
+        };
       }
     }
   }, [mapInstance, center, zoom, mapReady]);
@@ -174,12 +181,24 @@ const AMap = ({
         const newMarkers = validMarkers.map((markerData, index) => {
           // 这里确保提取坐标时强制转换为数字，防止出现字符串导致高德地图定位出错跑到美国
           const position = [Number(markerData.longitude), Number(markerData.latitude)];
-          const marker = new AMapObj.Marker({
+          
+          let markerOptions = {
             position: position,
             title: markerData.title || `标记点${index + 1}`,
-            icon: markerData.icon || 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png',
             clickable: true,
-          });
+            zIndex: markerData.isCustomIcon && markerData.icon.includes('32px') ? 100 : 10, // 选中的图标层级更高
+          };
+
+          // 判断是否是自定义 HTML 内容
+          if (markerData.isCustomIcon) {
+            markerOptions.content = markerData.icon;
+            // 调整锚点到底部中心
+            markerOptions.offset = new AMapObj.Pixel(-12, -24);
+          } else {
+            markerOptions.icon = markerData.icon || 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png';
+          }
+
+          const marker = new AMapObj.Marker(markerOptions);
 
           // 添加信息窗体
           if (markerData.infoWindow) {

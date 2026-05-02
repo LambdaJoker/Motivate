@@ -1,19 +1,3 @@
-/*
- * @Author: taotaozi-pro 2667534364@qq.com
- * @Date: 2025-06-27 10:54:20
- * @LastEditors: taotaozi-pro 2667534364@qq.com
- * @LastEditTime: 2025-06-30 08:51:26
- * @FilePath: \Motivate\backend\src\itinerary\itinerary.controller.ts
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- */
-/*
- * @Author: taotaozi-pro 2667534364@qq.com
- * @Date: 2025-06-27 10:54:20
- * @LastEditors: taotaozi-pro 2667534364@qq.com
- * @LastEditTime: 2025-06-30 08:33:32
- * @FilePath: \Motivate\backend\src\itinerary\itinerary.controller.ts
- * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
- */
 import { Controller, Post, Body, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { ItineraryService } from './itinerary.service';
 import { CreateItineraryDto } from './dto/create-itinerary.dto';
@@ -78,6 +62,7 @@ export class ItineraryController {
   async regenerateItinerary(
     @Param('itineraryId', ParseIntPipe) itineraryId: number,
     @GetUser() user: User,
+    @Query('taskId') taskId?: string,
   ) {
     const userId = user?.id || 1;
     
@@ -89,6 +74,9 @@ export class ItineraryController {
     }
     
     const params: GenerateItineraryDto = JSON.parse(oldItinerary.generationParams);
+    if (taskId) {
+      params.taskId = taskId;
+    }
     
     // 2. 使用原参数并传入 ID 以实现原地更新
     return this.itineraryService.generateItinerary(params, userId, itineraryId);

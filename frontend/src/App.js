@@ -20,6 +20,7 @@ import RegisterPage from './pages/RegisterPage';
 
 // Components
 import AppHeader from './components/AppHeader';
+import AppSidebar from './components/AppSidebar';
 import ProtectedRoute from './components/ProtectedRoute';
 
 const { Content, Footer } = Layout;
@@ -50,14 +51,14 @@ function App() {
         borderRadius: 8,
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
         colorBgContainer: '#ffffff',
-        colorBgLayout: '#F9FAFB',
+        colorBgLayout: '#f8fafc',
         colorText: '#111827',
         colorTextSecondary: '#4B5563',
       },
       components: {
         Card: {
           borderRadiusLG: 16,
-          boxShadowTertiary: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
         },
         Button: {
           borderRadius: 8,
@@ -83,28 +84,28 @@ function App() {
         <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Layout className="app-layout">
             <AppHeader isAuthenticated={isAuthenticated} setIsAuthenticated={setIsAuthenticated} />
-            <Content className="app-content">
-              <Routes>
-                {/* Public Routes */}
-                <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
-                <Route path="/register" element={<RegisterPage />} />
+            <Layout style={{ flexDirection: 'row', minHeight: 'calc(100vh - 64px)' }}>
+              {isAuthenticated && <AppSidebar />}
+              <Content className="app-content">
+                <Routes>
+                  {/* Public Routes */}
+                  <Route path="/login" element={<LoginPage setIsAuthenticated={setIsAuthenticated} />} />
+                  <Route path="/register" element={<RegisterPage />} />
 
-                {/* Protected Routes */}
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/generate" element={<GenerateItineraryPage />} />
-                  <Route path="/itinerary/:id" element={<ItineraryDetailPage />} />
-                </Route>
-                
-                {/* Redirect root path */}
-                <Route 
-                  path="/" 
-                  element={<Navigate replace to={isAuthenticated ? "/generate" : "/login"} />} 
-                />
-              </Routes>
-            </Content>
-            <Footer style={{ textAlign: 'center' }}>
-              旅行攻略规划 ©{new Date().getFullYear()} 为爱而创
-            </Footer>
+                  {/* Protected Routes */}
+                  <Route element={<ProtectedRoute />}>
+                    <Route path="/generate" element={<GenerateItineraryPage />} />
+                    <Route path="/itinerary/:id" element={<ItineraryDetailPage />} />
+                  </Route>
+                  
+                  {/* Redirect root path */}
+                  <Route 
+                    path="/" 
+                    element={<Navigate replace to={isAuthenticated ? "/generate" : "/login"} />} 
+                  />
+                </Routes>
+              </Content>
+            </Layout>
           </Layout>
         </Router>
       </AntdApp>

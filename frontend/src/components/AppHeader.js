@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Menu, Button, Space, Dropdown, Avatar, message, ConfigProvider } from 'antd';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { GiftOutlined, CalendarOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
+import { CompassOutlined, CalendarOutlined, UserOutlined, LogoutOutlined } from '@ant-design/icons';
 import { jwtDecode } from 'jwt-decode';
 
 const { Header } = Layout;
@@ -47,57 +47,35 @@ const AppHeader = ({ isAuthenticated, setIsAuthenticated }) => {
   ];
 
   const mainMenuItems = [];
-  if (isAuthenticated) {
-    mainMenuItems.push({
-      key: '/generate',
-      icon: <CalendarOutlined />,
-      label: '创建攻略',
-      onClick: () => navigate('/generate'),
-    });
-  }
 
   return (
-    <Header className="app-header" style={{ padding: 0 }}>
+    <Header className="app-header" style={{ padding: 0, background: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid #e5e7eb' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <GiftOutlined style={{ fontSize: 24, color: '#ffffff', marginRight: 12 }} />
-          <Link to="/" style={{ textDecoration: 'none' }}>
-            <h1 style={{ color: '#ffffff', margin: 0, fontSize: '1.25rem', fontWeight: 700, letterSpacing: '-0.025em' }}>Motivate旅行</h1>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary-color)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12, boxShadow: '0 4px 10px rgba(79, 70, 229, 0.2)' }}>
+            <CompassOutlined style={{ fontSize: 18 }} />
+          </div>
+          <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.025em', color: '#111827' }}>TripAgent</h1>
           </Link>
         </div>
         
-        <ConfigProvider theme={{
-          components: {
-            Menu: {
-              itemColor: 'rgba(255, 255, 255, 0.7)',
-              itemHoverColor: '#ffffff',
-              itemSelectedColor: '#ffffff',
-              horizontalItemSelectedColor: '#ffffff',
-            }
-          }
-        }}>
-          <Menu 
-            mode="horizontal" 
-            selectedKeys={[location.pathname]} 
-            items={mainMenuItems}
-            style={{ background: 'transparent', flex: 1, marginLeft: 40, borderBottom: 'none' }}
-          />
-        </ConfigProvider>
+        <div style={{ flex: 1 }}></div>
         
         <Space size={16}>
           {isAuthenticated ? (
             <Dropdown menu={{ items: menuItems }} placement="bottomRight">
-              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px 8px', borderRadius: 20, transition: 'background-color 0.2s', background: 'rgba(255, 255, 255, 0.1)' }}>
-                <Avatar icon={<UserOutlined />} style={{ marginRight: 8, backgroundColor: '#ffffff', color: 'var(--primary-color)' }}/>
-                <span style={{ color: '#ffffff', fontWeight: 500 }}>{username}</span>
+              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px 8px', borderRadius: 20, transition: 'background-color 0.2s', background: 'rgba(0, 0, 0, 0.04)' }}>
+                <Avatar icon={<UserOutlined />} style={{ marginRight: 8, backgroundColor: 'var(--primary-color)', color: '#ffffff' }}/>
+                <span style={{ color: '#111827', fontWeight: 500 }}>{username}</span>
               </div>
             </Dropdown>
           ) : (
             <>
-              <Button type="text" onClick={() => navigate('/login')} style={{ fontWeight: 500, color: 'rgba(255, 255, 255, 0.8)' }}>
+              <Button type="text" onClick={() => navigate('/login')} style={{ fontWeight: 500, color: '#4B5563' }}>
                 登录
               </Button>
-              <Button type="default" onClick={() => navigate('/register')} style={{ fontWeight: 500, borderRadius: 20, color: 'var(--primary-color)', border: 'none' }}>
+              <Button type="primary" onClick={() => navigate('/register')} style={{ fontWeight: 500, borderRadius: 20, boxShadow: 'none' }}>
                 注册
               </Button>
             </>
