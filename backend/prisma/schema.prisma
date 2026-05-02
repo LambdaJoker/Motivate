@@ -28,7 +28,7 @@ model Itinerary {
   id          Int        @id @default(autoincrement())
   userId      Int
   title       String
-  description String?
+  description String?    @db.Text
   startDate   DateTime?
   endDate     DateTime?
   totalEstimatedCost Decimal?   @default(0)
@@ -52,7 +52,7 @@ model PlanItem {
   itinerary       Itinerary     @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
   itineraryId     Int
   title           String
-  description     String?
+  description     String?       @db.Text
   planDate        DateTime
   orderIndex      Int
   locationName    String

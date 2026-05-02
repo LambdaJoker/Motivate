@@ -164,3 +164,36 @@ code {
     margin-bottom: 16px;
   }
 }
+
+@media print {
+  .hide-on-print {
+    display: none !important;
+  }
+  .app-sidebar {
+    display: none !important;
+  }
+  .app-header {
+    display: none !important;
+  }
+  .timeline-card {
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .ant-tabs-content-holder {
+    overflow: visible !important;
+  }
+  body {
+    background-color: white !important;
+  }
+  .ant-card {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0 !important;
+  }
+  .ant-tabs-nav {
+    display: none !important;
+  }
+  /* For print, we want to show all days. However, Ant Design Tabs only render active tab by default, 
+     so user might only be able to print the currently selected day. To print all, they might need to use the copy text feature. */
+}

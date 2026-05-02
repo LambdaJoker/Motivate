@@ -89,11 +89,11 @@ const GenerateItineraryPage = () => {
         ...values,
         origin: values.origin || '', // Ensure origin is not undefined
         startDate: values.startDate.format('YYYY-MM-DD'),
-        mustVisitSpots: values.spots
-          .filter(spot => spot.isRequired)
+        mustVisitSpots: (values.spots || [])
+          .filter(spot => spot && spot.isRequired === true)
           .map(spot => spot.name),
-        optionalSpots: values.spots
-          .filter(spot => !spot.isRequired)
+        optionalSpots: (values.spots || [])
+          .filter(spot => spot && spot.isRequired === false)
           .map(spot => spot.name),
         taskId: currentTaskId
       };
@@ -143,7 +143,7 @@ const GenerateItineraryPage = () => {
               transportMode: 'driving',
               durationDays: 3,
               travelPreference: [],
-              spots: [{ name: '', isRequired: true }]
+              spots: []
             }}
             style={{
               background: '#ffffff',
@@ -288,38 +288,36 @@ const GenerateItineraryPage = () => {
                     
                     <div style={{ color: '#4b5563', fontSize: 14, fontWeight: 500, marginBottom: 8 }}>指定景点</div>
                     <Form.List name="spots">
-                      {(fields, { add, remove }) => (
-                        <>
-                          {fields.map(({ key, name, ...restField }) => (
-                            <Space 
-                              key={key} 
-                              style={{ display: 'flex', marginBottom: 8 }} 
-                              align="baseline"
-                            >
-                              <Form.Item
-                                {...restField}
-                                name={[name, 'name']}
-                                rules={[{ required: true, message: '请输入景点名称' }]}
-                              >
-                                <Input placeholder="景点名称" style={{ borderRadius: 8, background: '#ffffff' }} />
-                              </Form.Item>
-                              
-                              <Form.Item
-                                {...restField}
-                                name={[name, 'isRequired']}
-                                valuePropName="checked"
-                              >
-                                <Select style={{ width: 100, borderRadius: 8 }}>
-                                  <Option value={true}>必去</Option>
-                                  <Option value={false}>可选</Option>
-                                </Select>
-                              </Form.Item>
-                              
-                              {fields.length > 1 ? (
-                                <MinusCircleOutlined title="移除" aria-label="移除" onClick={() => remove(name)} style={{ color: '#ef4444', fontSize: 18 }} />
-                              ) : null}
-                            </Space>
-                          ))}
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...restField }) => (
+                    <Space 
+                      key={key} 
+                      style={{ display: 'flex', marginBottom: 8 }} 
+                      align="baseline"
+                    >
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'name']}
+                        rules={[{ required: true, message: '请输入景点名称' }]}
+                      >
+                        <Input placeholder="景点名称" style={{ borderRadius: 8, background: '#ffffff' }} />
+                      </Form.Item>
+                      
+                      <Form.Item
+                        {...restField}
+                        name={[name, 'isRequired']}
+                        initialValue={true}
+                      >
+                        <Select style={{ width: 100, borderRadius: 8 }}>
+                          <Option value={true}>必去</Option>
+                          <Option value={false}>可选</Option>
+                        </Select>
+                      </Form.Item>
+                      
+                      <MinusCircleOutlined title="移除" aria-label="移除" onClick={() => remove(name)} style={{ color: '#ef4444', fontSize: 18 }} />
+                    </Space>
+                  ))}
                           
                           <Form.Item>
                             <Button 

@@ -262,15 +262,22 @@ export class ItineraryService {
     }
 
     // 3. 创建最终的行程对象
+    let finalDescription = description || '';
+    if (llmPlan.budgetAnalysis) {
+      finalDescription = finalDescription 
+        ? `${finalDescription}\n\n${llmPlan.budgetAnalysis}`
+        : `${llmPlan.budgetAnalysis}`;
+    }
+
     const itineraryData: CreateItineraryDto = {
       title,
-      description,
+      description: finalDescription,
       startDate: new Date(startDate).toISOString(),
       endDate: addDays(new Date(startDate), durationDays - 1).toISOString(),
       planItems: finalPlanItems,
       budget: budget,
       estimatedCost: totalEstimatedCost,
-      generationParams: JSON.stringify(generateDto)
+      generationParams: JSON.stringify({...generateDto, budgetAnalysis: llmPlan.budgetAnalysis})
     };
 
     if (existingItineraryId) {
@@ -295,11 +302,16 @@ export class ItineraryService {
       });
 
       // 2. Update itinerary metadata
+      let finalDescription = description || '';
+      // 注意：我们在 create 阶段把 budgetAnalysis 存进了 generationParams，
+      // 更新时如果 generateDto 原封不动传回来，里面可能也有。但为了防止重复拼接，我们在外层逻辑已经拼接过了。
+      // 其实更安全的是直接存 description。
+      
       const itinerary = await prisma.itinerary.update({
         where: { id: itineraryId },
         data: {
           title,
-          description,
+          description: description, // 保持传递过来的 description，因为外面在 generateItinerary 时已经拼接好传给 update 了
           startDate: startDate ? new Date(startDate) : null,
           endDate: endDate ? new Date(endDate) : null,
           totalEstimatedCost: estimatedCost || 0,

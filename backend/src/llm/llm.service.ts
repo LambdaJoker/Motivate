@@ -83,7 +83,7 @@ export class LlmService {
         this.logger.warn(`[Tool] DuckDuckGo returned 0 results, likely blocked or empty.`);
         return [{ content: `请基于你的知识库，为 ${query} 提供防踩雷建议和详细攻略。` }];
       }
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Search API error: ${e.message}`);
       return [{ error: '实时搜索暂时不可用，请直接基于已有知识库和常识生成最专业的攻略和避坑指南。' }];
     }
@@ -119,7 +119,7 @@ export class LlmService {
         };
       }
       return { error: '获取天气数据失败' };
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Weather API error: ${e.message}`);
       return { error: '天气API调用异常' };
     }
@@ -165,7 +165,7 @@ export class LlmService {
       }
       
       return { error: '未找到相关推荐地点' };
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Amap search API error: ${e.message}`);
       return { error: '地点搜索API调用异常' };
     }
@@ -193,7 +193,7 @@ export class LlmService {
         recommended_vehicle: routeInfo.vehicle,
         notice: '以上时间包含进出站和安检时间，花费为该交通方式的平均预估价。'
       };
-    } catch (e) {
+    } catch (e: any) {
       this.logger.error(`Route estimate API error: ${e.message}`);
       return { error: '路线计算异常' };
     }
@@ -253,7 +253,8 @@ export class LlmService {
 请务必只输出合法的 JSON 格式，绝对不要包含任何 XML 标签、思考过程（如 <think> 或 <invoke>）或任何说明文字。
 JSON 结构必须严格如下：
 {
-  "totalEstimatedCost": 1500, // 整体预估花费
+  "budgetAnalysis": "简要说明你将如何分配这笔预算（例如：酒店XX元，餐饮XX元，交通XX元，景点XX元），以确保绝对不超支。",
+  "totalEstimatedCost": 1500, // 整体预估花费，必须严格小于或等于用户的总预算！
   "days": [
     {
       "date": "2025-06-30", // 格式 YYYY-MM-DD
@@ -361,11 +362,11 @@ JSON 结构必须严格如下：
               properties: {
                 originName: {
                   type: "string",
-                  description: "出发地点名称，例如：'北京南站' 或 '三亚凤凰机场' 或 '亚龙湾'"
+                  description: "出发地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'北京南站' 或 '三亚凤凰机场' 或 '亚龙湾'"
                 },
                 destinationName: {
                   type: "string",
-                  description: "到达地点名称，例如：'三亚凤凰机场' 或 '天涯海角'"
+                  description: "到达地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'三亚凤凰机场' 或 '天涯海角'"
                 }
               },
               required: ["originName", "destinationName"]
@@ -469,11 +470,14 @@ JSON 结构必须严格如下：
                   addLog(`正在查询当地天气预报: ${args.city || params.destination}`);
                   toolResult = await this.getWeatherForecast(args.city || params.destination);
                 } else if (toolCall.function.name === 'getLocalRecommendations') {
-                  addLog(`正在查询真实${args.keyword || '地点'}与价格: ${args.city || params.destination}`);
-                  toolResult = await this.getLocalRecommendations(args.city || params.destination, args.keyword || '景点');
+                  const searchCity = args.city && args.city !== 'undefined' ? args.city : params.destination;
+                  addLog(`正在查询真实${args.keyword || '地点'}与价格: ${searchCity}`);
+                  toolResult = await this.getLocalRecommendations(searchCity, args.keyword || '景点');
                 } else if (toolCall.function.name === 'calculateRouteEstimate') {
-                  addLog(`正在精确计算路线时间与交通花费: ${args.originName} 到 ${args.destinationName}`);
-                  toolResult = await this.calculateRouteEstimate(args.originName, args.destinationName);
+                  const origin = args.originName && args.originName !== 'undefined' ? args.originName : params.origin || params.destination;
+                  const dest = args.destinationName && args.destinationName !== 'undefined' ? args.destinationName : params.destination;
+                  addLog(`正在精确计算路线时间与交通花费: ${origin} 到 ${dest}`);
+                  toolResult = await this.calculateRouteEstimate(origin, dest);
                 } else {
                   toolResult = { error: 'Unknown tool' };
                 }
@@ -578,6 +582,15 @@ JSON 结构必须严格如下：
           // 简单的数据结构校验
           if (!parsedJSON.days || !Array.isArray(parsedJSON.days)) {
             throw new Error('LLM output missing "days" array');
+          }
+
+          // 保底清理 null/undefined
+          for (const day of parsedJSON.days) {
+            for (const item of day.items) {
+              if (!item.estimatedCost) item.estimatedCost = 0;
+              if (!item.durationMinutes) item.durationMinutes = 60;
+              if (!item.locationName || item.locationName === 'undefined') item.locationName = params.destination;
+            }
           }
           
           this.logger.log('LLM successfully generated and parsed the itinerary.');

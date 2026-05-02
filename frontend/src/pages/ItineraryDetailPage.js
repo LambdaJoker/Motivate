@@ -31,6 +31,7 @@ const ItineraryDetailPage = () => {
   const [activeDateItems, setActiveDateItems] = useState([]);
   const [routeData, setRouteData] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherData, setWeatherData] = useState(null);
   const [amapLink, setAmapLink] = useState('');
   const [qrModalVisible, setQrModalVisible] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
@@ -249,17 +250,10 @@ const ItineraryDetailPage = () => {
     try {
       setWeatherLoading(true);
       const weather = await amapApi.getWeather(city);
-      if (weather) {
-        if (weather.lives && weather.lives.length > 0) {
-          const live = weather.lives[0];
-          notification.info({
-            message: `${live.city} 当前天气`,
-            description: `${live.weather} | ${live.temperature}℃ | 风向: ${live.winddirection} ${live.windpower} | 湿度: ${live.humidity}%`,
-            placement: 'topRight',
-          });
-        } else {
-          message.info('暂无天气信息');
-        }
+      if (weather && weather.forecasts && weather.forecasts.length > 0) {
+        setWeatherData(weather.forecasts[0]);
+      } else {
+        message.info('暂无可用的天气预报信息');
       }
     } catch (error) {
       console.error('获取天气信息失败:', error);
@@ -814,6 +808,46 @@ const ItineraryDetailPage = () => {
     });
   };
 
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleDownloadICS = () => {
+    if (!itinerary || !itinerary.planItems) return;
+    
+    let icsContent = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//TripAgent//Itinerary//EN\n";
+    
+    itinerary.planItems.forEach(item => {
+      if (!item.startTime) return;
+      
+      // 简单处理时间格式 2025-06-30T08:00:00.000Z -> 20250630T080000Z
+      const start = new Date(item.startTime).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+      // 如果没有 endTime，默认加1小时
+      let endObj = item.endTime ? new Date(item.endTime) : new Date(new Date(item.startTime).getTime() + 60 * 60 * 1000);
+      const end = endObj.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+      
+      icsContent += "BEGIN:VEVENT\n";
+      icsContent += `DTSTART:${start}\n`;
+      icsContent += `DTEND:${end}\n`;
+      icsContent += `SUMMARY:${item.title}\n`;
+      icsContent += `DESCRIPTION:${(item.description || '').replace(/\n/g, '\\n')}\n`;
+      icsContent += `LOCATION:${item.locationName || ''}\n`;
+      icsContent += "END:VEVENT\n";
+    });
+    
+    icsContent += "END:VCALENDAR";
+    
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = window.URL.createObjectURL(blob);
+    link.download = `${itinerary.title}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    message.success('日历文件下载成功！');
+  };
+
   const handleDeleteItinerary = () => {
     modal.confirm({
       title: '删除行程',
@@ -880,24 +914,33 @@ const ItineraryDetailPage = () => {
           </Col>
           <Col xs={24} md={10} style={{ textAlign: 'right' }}>
             <Space size="small" wrap>
-              <Button icon={<CopyOutlined />} onClick={handleCopyText} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
+              <Button icon={<CopyOutlined />} onClick={handleCopyText} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }} className="hide-on-print">
                 复制
               </Button>
-              <Button icon={<SyncOutlined />} onClick={handleRegenerateItinerary} loading={regenerating} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
+              <Button icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }} className="hide-on-print">
+                刷新天气
+              </Button>
+              <Button icon={<SyncOutlined />} onClick={handleRegenerateItinerary} loading={regenerating} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }} className="hide-on-print">
                 重新生成
               </Button>
-              <Button type="primary" icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
-                分享
+              <Button type="primary" icon={<LinkOutlined />} onClick={() => setQrModalVisible(true)} disabled={!amapLink} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }} className="hide-on-print">
+                分享 / 导出
               </Button>
-              <Button icon={<CloudOutlined />} onClick={() => fetchWeather(itinerary.destination)} loading={weatherLoading} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
-                天气
-              </Button>
-              <Button danger type="text" icon={<DeleteOutlined />} onClick={handleDeleteItinerary} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}>
+              <Button danger type="text" icon={<DeleteOutlined />} onClick={handleDeleteItinerary} style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }} className="hide-on-print">
                 删除
               </Button>
             </Space>
           </Col>
         </Row>
+
+        {itinerary.description && (
+          <div style={{ marginTop: 24, padding: '16px 20px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0', whiteSpace: 'pre-wrap', color: '#475569', lineHeight: 1.6, fontSize: '0.95rem' }}>
+            <div style={{ fontWeight: 600, color: '#1e293b', marginBottom: 8, display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: '1.2rem', marginRight: 8 }}>💡</span> 规划摘要与预算分析
+            </div>
+            {itinerary.description}
+          </div>
+        )}
         
         {itinerary.budget > 0 && (
           <div style={{ marginTop: 24, padding: '16px 20px', background: '#f8fafc', borderRadius: 12 }}>
@@ -926,6 +969,58 @@ const ItineraryDetailPage = () => {
     );
   };
   
+  const renderWeatherWidget = () => {
+    if (weatherLoading) {
+      return (
+        <Card style={{ marginBottom: 24, borderRadius: 'var(--radius-lg)', border: '1px solid #e2e8f0', background: '#f8fafc' }} className="hide-on-print">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 0' }}>
+            <Spin size="small" /> <span style={{ marginLeft: 8, color: '#64748b' }}>获取当地天气中...</span>
+          </div>
+        </Card>
+      );
+    }
+
+    if (!weatherData || !weatherData.casts) return null;
+
+    return (
+      <Card 
+        style={{ marginBottom: 24, borderRadius: 'var(--radius-lg)', border: '1px solid #e2e8f0', background: '#ffffff' }}
+        styles={{ body: { padding: '16px 24px' } }}
+        className="hide-on-print"
+      >
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+          <CloudOutlined style={{ fontSize: 20, color: 'var(--primary-color)', marginRight: 8 }} />
+          <Text style={{ fontWeight: 700, fontSize: '1.1rem', color: '#1e293b' }}>
+            {weatherData.city} 近期天气预报
+          </Text>
+        </div>
+        <Row gutter={[16, 16]}>
+          {weatherData.casts.slice(0, 4).map((cast, idx) => (
+            <Col xs={12} sm={6} key={idx}>
+              <div style={{ 
+                padding: '12px', 
+                borderRadius: '12px', 
+                background: idx === 0 ? '#eef2ff' : '#f8fafc',
+                border: `1px solid ${idx === 0 ? '#c7d2fe' : '#e2e8f0'}`,
+                textAlign: 'center'
+              }}>
+                <div style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 4 }}>
+                  {idx === 0 ? '今天' : cast.date.substring(5)}
+                </div>
+                <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1e293b', marginBottom: 4 }}>
+                  {cast.dayweather}
+                </div>
+                <div style={{ fontSize: '0.9rem', color: '#4F46E5', fontWeight: 500 }}>
+                  {cast.nighttemp} ~ {cast.daytemp}℃
+                </div>
+              </div>
+            </Col>
+          ))}
+        </Row>
+      </Card>
+    );
+  };
+
   if (loading) {
     return (
       <div style={{ textAlign: 'center', padding: '100px 0' }}>
@@ -938,6 +1033,7 @@ const ItineraryDetailPage = () => {
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '24px 16px' }}>
       {renderPageHeader()}
+      {renderWeatherWidget()}
       
       {regenerating && progressLogs.length > 0 && (
         <Card 
@@ -981,10 +1077,16 @@ const ItineraryDetailPage = () => {
       
       {/* 分享二维码弹窗 */}
       <Modal
-        title="分享行程"
+        title="分享与导出"
         open={qrModalVisible}
         onCancel={() => setQrModalVisible(false)}
         footer={[
+          <Button key="calendar" onClick={handleDownloadICS} style={{ borderColor: 'var(--primary-color)', color: 'var(--primary-color)' }}>
+            导出到系统日历 (.ics)
+          </Button>,
+          <Button key="print" type="primary" onClick={handlePrint}>
+            保存为 PDF / 打印
+          </Button>,
           <Button key="close" onClick={() => setQrModalVisible(false)}>
             关闭
           </Button>

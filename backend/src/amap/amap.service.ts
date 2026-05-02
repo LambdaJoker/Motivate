@@ -161,6 +161,10 @@ export class AmapService {
   }
 
   async geocode(address: string, city?: string): Promise<any> {
+    if (!address || address === 'undefined') {
+      this.logger.warn(`Invalid address for geocoding: ${address}`);
+      return null;
+    }
     const url = `${this.amapApiBase}/geocode/geo`;
     try {
       const { data } = await firstValueFrom(
@@ -289,6 +293,11 @@ export class AmapService {
   }
 
   async getIntercityRouteDetails(origin: string, destination: string): Promise<{ duration: number; distance: number; cost: number; mode: TransportMode; vehicle: string }> {
+    if (!origin || !destination || origin === 'undefined' || destination === 'undefined') {
+      this.logger.warn(`Invalid origin or destination for intercity route: origin=${origin}, dest=${destination}`);
+      return { duration: 60, distance: 10, cost: 30, mode: TransportMode.driving, vehicle: '打车' };
+    }
+
     const url = `${this.amapApiV5Base}/direction/driving`;
     try {
       const { data } = await firstValueFrom(
