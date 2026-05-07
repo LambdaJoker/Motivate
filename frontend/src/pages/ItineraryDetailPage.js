@@ -943,6 +943,7 @@ const ItineraryDetailPage = () => {
         title: item.locationName,
         icon: customIcon,
         isCustomIcon: true,
+        isSelected: isSelected,
         onClick: (isUserClick = true) => {
           setSelectedTimelineSpot(item);
           if (isUserClick) {

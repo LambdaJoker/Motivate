@@ -145,7 +145,7 @@ const AMap = ({
 
   // 更新地图标记点
   // 把 markers 中的核心数据提取出来作为依赖，避免对象引用变化导致无限重绘
-  const markersDep = JSON.stringify(markers.map(m => ({ lng: m.longitude, lat: m.latitude, icon: m.icon })));
+  const markersDep = JSON.stringify(markers.map(m => ({ lng: m.longitude, lat: m.latitude, icon: m.icon, isSelected: m.isSelected })));
   useEffect(() => {
     // 增加一个标记确保不会在组件卸载后仍然更新状态
     let isMounted = true;
@@ -216,15 +216,21 @@ const AMap = ({
                 markerData.onClick(!isSynthetic);
               }
             });
-          }
 
-          if (index === 0 && markerData.infoWindow) {
-            // 延迟触发点击事件，确保标记已经被添加到地图上
-            setTimeout(() => {
-              if (isMounted) {
-                marker.emit('click', { synthetic: true });
-              }
-            }, 300);
+            if (markerData.isSelected) {
+              setTimeout(() => {
+                if (isMounted && mapInstance && mapInstance.CLASS_NAME === 'AMap.Map') {
+                  infoWindow.open(mapInstance, marker.getPosition());
+                }
+              }, 300);
+            } else if (!markers.some(m => m.isSelected) && index === 0) {
+              // 延迟触发点击事件，确保标记已经被添加到地图上
+              setTimeout(() => {
+                if (isMounted) {
+                  marker.emit('click', { synthetic: true });
+                }
+              }, 300);
+            }
           }
 
           return marker;
