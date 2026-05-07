@@ -12,7 +12,7 @@ import {
   CheckCircleOutlined, DeleteOutlined, ExclamationCircleOutlined, SyncOutlined,
   ExpandAltOutlined, ShrinkOutlined, CopyOutlined, LoadingOutlined,
   CoffeeOutlined, HomeOutlined, CameraOutlined, ClockCircleOutlined, EditOutlined,
-  PlusOutlined
+  PlusOutlined, RocketOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { format, addDays, parseISO } from 'date-fns';
@@ -64,7 +64,7 @@ const SortableTimelineItem = ({ item, isSelected, showDetails, getItemIcon, onSe
   }
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
+    <div id={`timeline-item-${item.id}`} ref={setNodeRef} style={style} {...attributes}>
       <Timeline.Item
         dot={
           <div {...listeners} style={{ cursor: 'grab', display: 'flex', justifyContent: 'center' }}>
@@ -765,11 +765,22 @@ const ItineraryDetailPage = () => {
       return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="今天暂无行程安排" style={{ margin: '64px 0' }} />;
     }
 
-    const getItemIcon = (type, isSelected) => {
+    const getItemIcon = (type, isSelected, title) => {
       let Icon = EnvironmentOutlined;
       let color = 'var(--primary-color)';
       switch(type) {
-        case 'transport': Icon = CarOutlined; color = '#10b981'; break; // 绿色
+        case 'transport': 
+          if (title && (title.includes('飞机') || title.includes('航班') || title.includes('机场'))) {
+            Icon = RocketOutlined; 
+            color = '#0284c7'; // 深蓝
+          } else if (title && (title.includes('高铁') || title.includes('火车') || title.includes('动车') || title.includes('车站'))) {
+            Icon = CarOutlined; // Ant Design 没有完美的火车icon，Car凑合或用自定
+            color = '#ea580c'; // 橙黄
+          } else {
+            Icon = CarOutlined; 
+            color = '#10b981'; // 绿色
+          }
+          break;
         case 'food': Icon = CoffeeOutlined; color = '#f59e0b'; break; // 橙色
         case 'accommodation': Icon = HomeOutlined; color = '#8b5cf6'; break; // 紫色
         case 'activity':
@@ -821,7 +832,7 @@ const ItineraryDetailPage = () => {
                   item={item}
                   isSelected={isSelected}
                   showDetails={showDetails}
-                  getItemIcon={getItemIcon}
+                  getItemIcon={(type, isSelected) => getItemIcon(type, isSelected, item.title)}
                   onSelect={setSelectedTimelineSpot}
                   onNavigate={handleNavigate}
                   onEdit={(item) => {
@@ -905,22 +916,24 @@ const ItineraryDetailPage = () => {
       
       const customIcon = `
         <div style="
-          width: ${isSelected ? '32px' : '24px'}; 
-          height: ${isSelected ? '32px' : '24px'}; 
+          width: ${isSelected ? '36px' : '28px'}; 
+          height: ${isSelected ? '36px' : '28px'}; 
           background-color: ${markerColor}; 
-          border-radius: 50%; 
+          border-radius: 50% 50% 50% 0; 
           border: 3px solid white; 
-          box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+          box-shadow: 0 4px 8px rgba(0,0,0,0.4);
           display: flex;
           align-items: center;
           justify-content: center;
           color: white;
           font-weight: bold;
-          font-size: ${isSelected ? '14px' : '12px'};
-          transition: all 0.3s ease;
-          transform-origin: center bottom;
+          font-size: ${isSelected ? '15px' : '13px'};
+          transform: rotate(-45deg);
+          transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+          position: relative;
+          z-index: ${isSelected ? 100 : 10};
         ">
-          ${index + 1}
+          <span style="transform: rotate(45deg); display: inline-block;">${index + 1}</span>
         </div>
       `;
 
@@ -930,6 +943,15 @@ const ItineraryDetailPage = () => {
         title: item.locationName,
         icon: customIcon,
         isCustomIcon: true,
+        onClick: (isUserClick = true) => {
+          setSelectedTimelineSpot(item);
+          if (isUserClick) {
+            const el = document.getElementById(`timeline-item-${item.id}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+        },
         infoWindow: `
           <div style="padding: 4px; min-width: 150px;">
             <h3 style="margin-top: 0; margin-bottom: 8px; color: #111827; font-size: 16px; border-bottom: 2px solid ${markerColor}; padding-bottom: 4px; display: inline-block;">${item.locationName}</h3>
@@ -941,8 +963,8 @@ const ItineraryDetailPage = () => {
     });
     
     // 重新设计：给每个日期的地图加一个强制的 Key，让 React 在切换 Tabs 时完全卸载并重新创建 AMap
-    // 注意：如果只是选中状态变化，不改变 key，这样地图就能平滑过渡缩放
-    const mapKey = `amap-${dateStr}-${route ? 'with-route' : 'no-route'}`;
+    // 注意：去掉了 route 依赖，避免路线加载完成时地图闪烁重绘，让 AMap 组件内部自行处理 polyline 的增删
+    const mapKey = `amap-${dateStr}`;
     const currentCenter = selectedTimelineSpot || validItems[0] || null;
     
     // 只有在没有选中特定卡片且没有正在加载路线的情况下，才自动居中适应所有的点

@@ -330,20 +330,24 @@ export class ItineraryService {
         const itemDate = new Date(day.date);
         itemDate.setHours(hours || 0, minutes || 0, 0, 0);
 
-        finalPlanItems.push({
-          title: item.title,
-          description: item.description || '',
-          planDate: day.date,
-          startTime: itemDate.toISOString(),
-          endTime: addMinutes(itemDate, item.durationMinutes || 0).toISOString(),
-          durationMinutes: item.durationMinutes || 0,
-          itemType: item.type,
-          locationName: item.locationName,
-          latitude: lat,
-          longitude: lng,
-          estimatedCost: item.estimatedCost || 0,
-          transportMode: transportMode as TransportMode || TransportMode.driving,
-        });
+          // Map frontend extra transport modes back to DB valid ones
+          let dbTransportMode = transportMode;
+          if (transportMode === 'taxi') dbTransportMode = 'driving';
+
+          finalPlanItems.push({
+            title: item.title,
+            description: item.description || '',
+            planDate: day.date,
+            startTime: itemDate.toISOString(),
+            endTime: addMinutes(itemDate, item.durationMinutes || 0).toISOString(),
+            durationMinutes: item.durationMinutes || 0,
+            itemType: item.type,
+            locationName: item.locationName,
+            latitude: lat,
+            longitude: lng,
+            estimatedCost: item.estimatedCost || 0,
+            transportMode: dbTransportMode as TransportMode || TransportMode.driving,
+          });
       }
     }
 

@@ -193,7 +193,7 @@ const AMap = ({
           if (markerData.isCustomIcon) {
             markerOptions.content = markerData.icon;
             // 调整锚点到底部中心
-            markerOptions.offset = new AMapObj.Pixel(-12, -24);
+            markerOptions.offset = new AMapObj.Pixel(-16, -32);
           } else {
             markerOptions.icon = markerData.icon || 'https://webapi.amap.com/theme/v1.3/markers/n/mark_b.png';
           }
@@ -207,9 +207,13 @@ const AMap = ({
               offset: new AMapObj.Pixel(0, -30)
             });
 
-            marker.on('click', () => {
+            marker.on('click', (e) => {
               if (mapInstance && mapInstance.CLASS_NAME === 'AMap.Map') {
                 infoWindow.open(mapInstance, marker.getPosition());
+              }
+              if (markerData.onClick) {
+                const isSynthetic = e && e.synthetic;
+                markerData.onClick(!isSynthetic);
               }
             });
           }
@@ -218,7 +222,7 @@ const AMap = ({
             // 延迟触发点击事件，确保标记已经被添加到地图上
             setTimeout(() => {
               if (isMounted) {
-                marker.emit('click');
+                marker.emit('click', { synthetic: true });
               }
             }, 300);
           }

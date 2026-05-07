@@ -242,8 +242,9 @@ export class LlmService {
 4. 时间与价格计算（极度重要）：
    - 对于景点门票、餐饮、酒店等花费，你**必须**参考 \`getLocalRecommendations\` 返回的 \`cost\` (人均消费) 字段作为 \`estimatedCost\`。
    - 对于任何交通（包含城际交通如高铁/飞机，以及同城交通如打车/地铁），你**必须**调用 \`calculateRouteEstimate\` 工具来获取精准的 \`estimated_duration_minutes\` 和 \`estimated_cost_rmb\`，禁止随意编造时间和交通价格！
+   - \`durationMinutes\` 的含义：如果是 \`transport\` 类型，它是“在路上花的时间”；如果是 \`activity\` / \`food\`，它是“游玩/就餐花的时间”。
    - 最终输出的 \`totalEstimatedCost\` 必须是你安排的所有项目 \`estimatedCost\` 的总和！
-5. 行程连贯性与返程规划：行程必须从出发地的交通开始。如果出发地和目的地不同，并且用户选择了多天游玩，必须在最后一天安排合理的返程交通。如果是自驾或途经多城，可以规划“一路玩回去”的顺路景点。如果同城游玩则不需要城际交通。
+5. 行程连贯性与返程规划：行程必须从出发地的交通开始。如果出发地和目的地不同，并且用户选择了多天游玩，必须在第一天安排去程大交通（如：乘坐${params.toDestinationTransportMode === 'train' ? '火车' : params.toDestinationTransportMode === 'high_speed_train' ? '高铁' : params.toDestinationTransportMode === 'plane' ? '飞机' : '交通工具'}前往${params.destination}），并在最后一天安排合理的返程交通。如果是自驾或途经多城，可以规划“一路玩回去”的顺路景点。如果同城游玩则不需要城际交通。
 6. 每天结构：每天的行程必须包含：早上的景点、午餐、下午的景点、晚餐、入住酒店。
 7. 节奏与时间：必须符合常理。调用 \`calculateRouteEstimate\` 确保景点间的交通时间真实可靠。每天晚上必须在22:00前安排回酒店休息。
 8. 必去景点：用户填写的必去景点必须全部安排进去。如果时间有富裕，请补充当地最著名、且符合用户【旅行偏好】的特色景点。
@@ -364,11 +365,11 @@ JSON 结构必须严格如下：
               properties: {
                 originName: {
                   type: "string",
-                  description: "出发地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'北京南站' 或 '三亚凤凰机场' 或 '亚龙湾'"
+                  description: "出发地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'北京南站' 或 '三亚凤凰机场' 或 '亚龙湾'。如果是从出发地城市前往目的地城市的大交通，请明确带上城市名和交通枢纽名（如：'成都市成都东站'）。"
                 },
                 destinationName: {
                   type: "string",
-                  description: "到达地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'三亚凤凰机场' 或 '天涯海角'"
+                  description: "到达地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'三亚凤凰机场' 或 '天涯海角'。如果是大交通，请明确带上城市名和交通枢纽名（如：'三亚市三亚凤凰机场'）。"
                 },
                 mode: {
                   type: "string",
