@@ -2,8 +2,8 @@
  * @Author: taotaozi-pro 2667534364@qq.com
  * @Date: 2025-06-26 08:05:40
  * @LastEditors: taotaozi-pro 2667534364@qq.com
- * @LastEditTime: 2025-06-29 22:39:57
- * @FilePath: \Motivate\backend\src\amap\amap.service.ts
+ * @LastEditTime: 2026-05-07 10:53:07
+ * @FilePath: \TripAgent\backend\src\amap\amap.service.ts
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 import { Injectable, Logger } from '@nestjs/common';
@@ -38,18 +38,22 @@ export class AmapService {
 
   async search(keywords: string, city: string) {
     const url = `${this.amapApiBase}/place/text`;
-    const { data } = await firstValueFrom(
-      this.httpService.get(url, {
-        // 移除 citylimit: true，防止用户输入的著名景点（如五台山）不在目标城市内时，搜出错误的同名小地点
-        params: { key: this.amapKey, keywords, city, show_fields: 'biz_ext' },
-      }),
-    );
-    return data;
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get(url, {
+          params: { key: this.amapKey, keywords, city, show_fields: 'biz_ext' },
+          timeout: 5000,
+        }),
+      );
+      return data;
+    } catch (error: any) {
+      this.logger.error(`Error during search for ${keywords} in ${city} - ${error.message}`);
+      return { pois: [] };
+    }
   }
 
   async getDrivingRoute(planItems: RoutableItem[]) {
     if (planItems.length < 2) {
-      // It's better to return a specific structure for client handling
       return { route: null, info: 'At least two points are required for routing.' };
     }
 
@@ -65,18 +69,24 @@ export class AmapService {
     }
 
     const url = `${this.amapApiV5Base}/direction/driving`;
-    const { data } = await firstValueFrom(
-      this.httpService.get(url, {
-        params: { 
-          key: this.amapKey, 
-          origin, 
-          destination, 
-          waypoints,
-          show_fields: 'path', // Request path details
-        },
-      }),
-    );
-    return data;
+    try {
+      const { data } = await firstValueFrom(
+        this.httpService.get(url, {
+          params: { 
+            key: this.amapKey, 
+            origin, 
+            destination, 
+            waypoints,
+            show_fields: 'path',
+          },
+          timeout: 10000,
+        }),
+      );
+      return data;
+    } catch (error: any) {
+      this.logger.error(`Error getting driving route - ${error.message}`);
+      return { route: null };
+    }
   }
 
   async getWalkingRoute(origin: string, destination: string) {
@@ -174,15 +184,16 @@ export class AmapService {
             address,
             city,
           },
+          timeout: 5000, // Add timeout to prevent ECONNRESET on hanging requests
         }),
       );
-      if (data && data.status === '1' && data.geocodes.length > 0) {
+      if (data && data.status === '1' && data.geocodes && data.geocodes.length > 0) {
         return data.geocodes[0];
       }
-      this.logger.warn(`Geocoding failed for address: ${address}`);
+      this.logger.warn(`Geocoding failed for address: ${address}, status: ${data?.status}`);
       return null;
-    } catch (error) {
-      this.logger.error(`Error during geocoding for address: ${address}`, error);
+    } catch (error: any) {
+      this.logger.error(`Error during geocoding for address: ${address} - ${error.message}`);
       return null;
     }
   }
@@ -292,7 +303,7 @@ export class AmapService {
     }
   }
 
-  async getIntercityRouteDetails(origin: string, destination: string): Promise<{ duration: number; distance: number; cost: number; mode: TransportMode; vehicle: string }> {
+  async getIntercityRouteDetails(origin: string, destination: string, preferredMode?: string): Promise<{ duration: number; distance: number; cost: number; mode: TransportMode; vehicle: string }> {
     if (!origin || !destination || origin === 'undefined' || destination === 'undefined') {
       this.logger.warn(`Invalid origin or destination for intercity route: origin=${origin}, dest=${destination}`);
       return { duration: 60, distance: 10, cost: 30, mode: TransportMode.driving, vehicle: '打车' };
@@ -308,6 +319,7 @@ export class AmapService {
             destination,
             show_fields: 'cost', // Request cost details
           },
+          timeout: 5000,
         }),
       );
 
@@ -330,7 +342,51 @@ export class AmapService {
         distance = R * c;
       }
 
-      // 根据距离智能判断交通工具和时间
+      // 如果用户指定了明确的交通方式
+      if (preferredMode) {
+        if (preferredMode === 'plane') {
+          const duration = Math.ceil((distance / 800) * 60) + 120; // 时速800km/h + 2小时安检候机
+          const cost = Math.ceil(distance * 0.8); // 机票约 0.8元/km
+          return { duration, distance, cost, mode: TransportMode.transit, vehicle: '飞机' };
+        }
+        if (preferredMode === 'high_speed_train') {
+          const duration = Math.ceil((distance / 250) * 60) + 60; // 时速250km/h + 1小时进出站
+          const cost = Math.ceil(distance * 0.4); // 高铁约 0.4元/km
+          return { duration, distance, cost, mode: TransportMode.transit, vehicle: '高铁' };
+        }
+        if (preferredMode === 'train') {
+          const duration = Math.ceil((distance / 120) * 60) + 60; // 时速120km/h + 1小时进出站
+          const cost = Math.ceil(distance * 0.2); // 火车约 0.2元/km
+          return { duration, distance, cost, mode: TransportMode.transit, vehicle: '火车' };
+        }
+        if (preferredMode === 'driving') {
+          const duration = Math.ceil((distance / 80) * 60); // 时速80km/h
+          const cost = Math.ceil(distance * 0.6); // 油费/过路费约 0.6元/km
+          return { duration, distance, cost, mode: TransportMode.driving, vehicle: '驾车' };
+        }
+        if (preferredMode === 'taxi') {
+          const duration = Math.ceil((distance / 40) * 60); // 时速40km/h
+          const cost = Math.ceil(distance * 2.5); // 打车约 2.5元/km
+          return { duration, distance, cost, mode: TransportMode.driving, vehicle: '打车' };
+        }
+        if (preferredMode === 'transit') {
+          const duration = Math.ceil((distance / 30) * 60); // 市内公交地铁时速约30km/h
+          const cost = Math.ceil(distance * 0.3);
+          return { duration, distance, cost, mode: TransportMode.transit, vehicle: '公共交通' };
+        }
+        if (preferredMode === 'walking') {
+          const duration = Math.ceil((distance / 5) * 60); // 步行时速约5km/h
+          const cost = 0;
+          return { duration, distance, cost, mode: TransportMode.walking, vehicle: '步行' };
+        }
+        if (preferredMode === 'bicycling') {
+          const duration = Math.ceil((distance / 15) * 60); // 骑行时速约15km/h
+          const cost = 2; // 共享单车起步价
+          return { duration, distance, cost, mode: TransportMode.bicycling, vehicle: '骑行' };
+        }
+      }
+
+      // 如果未指定，则根据距离智能判断交通工具和时间
       if (distance > 800) {
         // 大于800公里推荐飞机 (时速约800km/h + 2小时安检候机)
         const duration = Math.ceil((distance / 800) * 60) + 120;
@@ -353,8 +409,8 @@ export class AmapService {
         return { duration, distance, cost, mode: TransportMode.driving, vehicle: '打车' };
       }
 
-    } catch (error) {
-      this.logger.error(`Failed to get intercity route details`, error);
+    } catch (error: any) {
+      this.logger.error(`Failed to get intercity route details - ${error.message}`);
       // 发生错误时返回默认值
       return { duration: 180, distance: 300, cost: 200, mode: TransportMode.transit, vehicle: '高铁' };
     }

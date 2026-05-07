@@ -2,8 +2,8 @@
  * @Author: taotaozi-pro 2667534364@qq.com
  * @Date: 2025-06-25 17:34:24
  * @LastEditors: taotaozi-pro 2667534364@qq.com
- * @LastEditTime: 2025-06-30 09:23:05
- * @FilePath: \Motivate\frontend\src\App.js
+ * @LastEditTime: 2026-05-06 00:10:35
+ * @FilePath: \TripAgent\frontend\src\App.js
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
 import React, { useEffect, useState } from 'react';
@@ -47,13 +47,13 @@ function App() {
   return (
     <ConfigProvider locale={zhCN} theme={{
       token: {
-        colorPrimary: '#4F46E5',
-        borderRadius: 8,
-        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        colorPrimary: '#1a73e8',
+        borderRadius: 12,
+        fontFamily: "'Google Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
         colorBgContainer: '#ffffff',
-        colorBgLayout: '#f8fafc',
-        colorText: '#111827',
-        colorTextSecondary: '#4B5563',
+        colorBgLayout: '#f8f9fa',
+        colorText: '#202124',
+        colorTextSecondary: '#5f6368',
       },
       components: {
         Card: {
@@ -61,21 +61,21 @@ function App() {
           boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
         },
         Button: {
-          borderRadius: 8,
+          borderRadius: 24,
           controlHeight: 40,
         },
         Input: {
-          borderRadius: 8,
-          controlHeight: 40,
+          borderRadius: 12,
+          controlHeight: 48,
         },
         Select: {
-          borderRadius: 8,
-          controlHeight: 40,
+          borderRadius: 12,
+          controlHeight: 48,
         },
         Tabs: {
-          itemColor: 'var(--text-secondary)',
-          itemSelectedColor: 'var(--primary-color)',
-          itemHoverColor: 'var(--primary-color)',
+          itemColor: '#5f6368',
+          itemSelectedColor: '#1a73e8',
+          itemHoverColor: '#1a73e8',
           titleFontSize: 16,
         }
       }

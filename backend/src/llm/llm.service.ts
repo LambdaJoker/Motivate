@@ -172,8 +172,8 @@ export class LlmService {
   }
 
   // 获取交通耗时和花费预估工具函数
-  private async calculateRouteEstimate(originName: string, destinationName: string) {
-    this.logger.log(`[Tool] Calculating route estimate from ${originName} to ${destinationName}`);
+  private async calculateRouteEstimate(originName: string, destinationName: string, mode?: string) {
+    this.logger.log(`[Tool] Calculating route estimate from ${originName} to ${destinationName} via ${mode || 'auto'}`);
     try {
       const geoOrigin = await this.amapService.geocode(originName);
       const geoDest = await this.amapService.geocode(destinationName);
@@ -182,7 +182,7 @@ export class LlmService {
         return { error: `无法解析地点坐标，请确认地点名称是否准确：${originName} 或 ${destinationName}` };
       }
       
-      const routeInfo = await this.amapService.getIntercityRouteDetails(geoOrigin.location, geoDest.location);
+      const routeInfo = await this.amapService.getIntercityRouteDetails(geoOrigin.location, geoDest.location, mode);
       
       return {
         origin: originName,
@@ -215,6 +215,7 @@ export class LlmService {
     budget: number;
     mustVisitSpots: string[];
     transportMode: string;
+    toDestinationTransportMode?: string;
     travelPreference?: string;
     fullPromptContext?: string;
     taskId?: string;
@@ -231,7 +232,8 @@ export class LlmService {
 旅行偏好：${params.travelPreference || '无特别偏好'}
 人均预算：${params.budget ? params.budget + '元' : '未限制'}
 必去景点：${params.mustVisitSpots.join('、') || '无'}
-交通偏好：${params.transportMode === 'driving' ? '自驾' : params.transportMode === 'walking' ? '徒步' : '公共交通/打车'}
+前往目的地交通偏好：${params.toDestinationTransportMode === 'train' ? '火车' : params.toDestinationTransportMode === 'high_speed_train' ? '高铁' : params.toDestinationTransportMode === 'plane' ? '飞机' : params.toDestinationTransportMode === 'driving' ? '自驾' : '不限'}
+当地出行偏好：${params.transportMode === 'driving' ? '自驾' : params.transportMode === 'walking' ? '徒步' : params.transportMode === 'transit' ? '公共交通' : params.transportMode === 'taxi' ? '打车' : '不限'}
 
 【规划原则】
 1. 核心目标：必须严格围绕用户的【旅行偏好】（如：${params.travelPreference || '无'}）来挑选景点、餐厅和安排行程节奏。
@@ -367,6 +369,11 @@ JSON 结构必须严格如下：
                 destinationName: {
                   type: "string",
                   description: "到达地点具体名称，必须是真实的城市或景点名，不能是 undefined。例如：'三亚凤凰机场' 或 '天涯海角'"
+                },
+                mode: {
+                  type: "string",
+                  description: "交通方式偏好（plane, high_speed_train, train, driving, taxi, transit, walking）。如果是前往目的地的大交通，请传入用户指定的前往目的地交通偏好；如果是同城接驳，请传入当地出行偏好。",
+                  enum: ["plane", "high_speed_train", "train", "driving", "taxi", "transit", "walking"]
                 }
               },
               required: ["originName", "destinationName"]
@@ -477,7 +484,7 @@ JSON 结构必须严格如下：
                   const origin = args.originName && args.originName !== 'undefined' ? args.originName : params.origin || params.destination;
                   const dest = args.destinationName && args.destinationName !== 'undefined' ? args.destinationName : params.destination;
                   addLog(`正在精确计算路线时间与交通花费: ${origin} 到 ${dest}`);
-                  toolResult = await this.calculateRouteEstimate(origin, dest);
+                  toolResult = await this.calculateRouteEstimate(origin, dest, args.mode);
                 } else {
                   toolResult = { error: 'Unknown tool' };
                 }

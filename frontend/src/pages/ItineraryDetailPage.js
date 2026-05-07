@@ -3,21 +3,211 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Card, Typography, Tabs, Spin, Row, Col, Button, 
   Divider, Progress,
-  Timeline, Empty, Tag, Space, Statistic, App, Modal
+  Timeline, Empty, Tag, Space, Statistic, App, Modal,
+  Form, Input, TimePicker, InputNumber, Select
 } from 'antd';
 import { 
   CalendarOutlined, EnvironmentOutlined, CloudOutlined,
   CarOutlined, LinkOutlined, WalletOutlined,
   CheckCircleOutlined, DeleteOutlined, ExclamationCircleOutlined, SyncOutlined,
   ExpandAltOutlined, ShrinkOutlined, CopyOutlined, LoadingOutlined,
-  CoffeeOutlined, HomeOutlined, CameraOutlined, ClockCircleOutlined
+  CoffeeOutlined, HomeOutlined, CameraOutlined, ClockCircleOutlined, EditOutlined,
+  PlusOutlined
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import { format, addDays, parseISO } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import AMap from '../components/AMap';
 import api, { itineraryApi, amapApi, llmApi } from '../services/api';
 
 const { Title, Text } = Typography;
+
+const SortableTimelineItem = ({ item, isSelected, showDetails, getItemIcon, onSelect, onNavigate, onEdit, onDelete }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : isSelected ? 1 : 0,
+    opacity: isDragging ? 0.8 : 1,
+    position: 'relative',
+  };
+
+  let timeStr = '未定时间';
+  if (item.startTime) {
+    try {
+      timeStr = format(parseISO(item.startTime), 'HH:mm');
+    } catch(e) {}
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <Timeline.Item
+        dot={
+          <div {...listeners} style={{ cursor: 'grab', display: 'flex', justifyContent: 'center' }}>
+            {getItemIcon(item.itemType, isSelected)}
+          </div>
+        }
+      >
+        <div 
+          className={`timeline-item-container ${isSelected ? 'selected' : ''}`}
+          style={{ 
+            paddingBottom: 24, 
+            cursor: 'pointer',
+            padding: '16px 20px',
+            borderRadius: '16px',
+            marginLeft: 12,
+            marginBottom: 16,
+            backgroundColor: isSelected ? '#e8f0fe' : '#ffffff',
+            border: '1px solid',
+            borderColor: isSelected ? '#d2e3fc' : 'transparent',
+            boxShadow: isDragging ? '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)' : 'none',
+          }}
+          onMouseEnter={(e) => {
+            if (!isSelected && !isDragging) {
+              e.currentTarget.style.backgroundColor = '#f8f9fa';
+              e.currentTarget.style.borderColor = '#f1f3f4';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!isSelected && !isDragging) {
+              e.currentTarget.style.backgroundColor = '#ffffff';
+              e.currentTarget.style.borderColor = 'transparent';
+            }
+          }}
+          onClick={() => onSelect(item)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: showDetails ? 12 : 0 }}>
+            <div style={{ 
+              fontWeight: 700, 
+              color: isSelected ? '#1a73e8' : '#5f6368', 
+              marginRight: 16, 
+              minWidth: '54px',
+              fontSize: '0.95rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              letterSpacing: '0.02em',
+              transition: 'all 0.2s ease'
+            }}>
+              {timeStr}
+            </div>
+            <div style={{ 
+              fontWeight: isSelected ? 700 : 600, 
+              color: isSelected ? '#174ea6' : '#202124', 
+              flex: 1, 
+              fontSize: '1.1rem',
+              whiteSpace: showDetails ? 'normal' : 'nowrap', 
+              overflow: showDetails ? 'visible' : 'hidden', 
+              textOverflow: showDetails ? 'clip' : 'ellipsis',
+              transition: 'all 0.2s ease'
+            }}>
+              {item.title}
+            </div>
+          </div>
+          
+          {/* 折叠/展开区域 */}
+          <div style={{ 
+            maxHeight: showDetails ? '800px' : '0', 
+            overflow: 'hidden', 
+            opacity: showDetails ? 1 : 0,
+            transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
+          }}>
+            {item.description && (
+              <div style={{ 
+                padding: '12px 16px', 
+                background: isSelected ? '#ffffff' : '#f8fafc', 
+                borderRadius: 12, 
+                marginBottom: 16,
+                marginTop: 4,
+                color: isSelected ? '#3730a3' : '#475569',
+                fontSize: '0.95rem',
+                lineHeight: 1.6,
+                borderLeft: `4px solid ${isSelected ? '#1a73e8' : '#dadce0'}`
+              }}>
+                {item.description}
+              </div>
+            )}
+            <Space wrap style={{ marginTop: 4, rowGap: 8 }}>
+              {item.estimatedCost > 0 && (
+                <Tag icon={<WalletOutlined />} style={{ borderRadius: 8, padding: '4px 10px', background: '#fff7e6', color: '#d46b08', borderColor: '#ffd591', fontSize: '0.85rem' }}>
+                  ¥{item.estimatedCost}
+                </Tag>
+              )}
+              {item.durationMinutes > 0 && (
+                <Tag icon={<ClockCircleOutlined />} style={{ borderRadius: 8, padding: '4px 10px', background: '#f0fdf4', color: '#047857', borderColor: '#a7f3d0', fontSize: '0.85rem' }}>
+                  {item.durationMinutes} 分钟
+                </Tag>
+              )}
+              <Button 
+                type="primary" 
+                size="small"
+                shape="round"
+                icon={<CarOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNavigate(item);
+                }}
+                style={{ marginLeft: 4, fontWeight: 500, boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)' }}
+              >
+                导航前往
+              </Button>
+              <Button
+                type="dashed"
+                size="small"
+                shape="round"
+                icon={<EditOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(item);
+                }}
+                style={{ marginLeft: 4, fontWeight: 500 }}
+              >
+                编辑
+              </Button>
+              <Button
+                danger
+                size="small"
+                shape="round"
+                icon={<DeleteOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(item);
+                }}
+                style={{ marginLeft: 4, fontWeight: 500 }}
+              >
+                删除
+              </Button>
+            </Space>
+          </div>
+        </div>
+      </Timeline.Item>
+    </div>
+  );
+};
 
 const ItineraryDetailPage = () => {
   const { id } = useParams();
@@ -70,47 +260,95 @@ const ItineraryDetailPage = () => {
     };
   }, [regenerating, taskId]);
 
-  // 获取行程详情
-  useEffect(() => {
-    const fetchItinerary = async () => {
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editForm] = Form.useForm();
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [addForm] = Form.useForm();
+  const [submittingAdd, setSubmittingAdd] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // 5px movement before dragging starts
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    
+    if (active.id !== over.id) {
+      const oldIndex = activeDateItems.findIndex((item) => item.id === active.id);
+      const newIndex = activeDateItems.findIndex((item) => item.id === over.id);
+      
+      const newItems = arrayMove(activeDateItems, oldIndex, newIndex);
+      
+      // Update local state immediately for snappy UI
+      setActiveDateItems(newItems);
+      
+      // Call backend to persist new order
       try {
-        setLoading(true);
-        const data = await itineraryApi.getItineraryWithItems(id);
+        const orderData = newItems.map((item, index) => ({ id: item.id, orderIndex: index }));
+        await itineraryApi.reorderPlanItems(id, orderData);
+        message.success('排序已更新');
+      } catch (error) {
+        message.error('排序更新失败');
+        // Revert on failure by refetching
+        fetchItinerary();
+      }
+    }
+  };
+
+  const fetchItinerary = async () => {
+    try {
+      setLoading(true);
+      const data = await itineraryApi.getItineraryWithItems(id);
+      
+      // Ensure data exists before accessing its properties
+      if (!data) {
+        throw new Error('Failed to load itinerary data');
+      }
+      
+      setItinerary(data);
+      
+      // 处理日期数据
+      if (data.planItems && data.planItems.length > 0) {
+        // 按日期分组
+        const dateGrouped = groupItemsByDate(data.planItems);
         
-        // Ensure data exists before accessing its properties
-        if (!data) {
-          throw new Error('Failed to load itinerary data');
-        }
-        
-        setItinerary(data);
-        
-        // 处理日期数据
-        if (data.planItems && data.planItems.length > 0) {
-          // 按日期分组
-          const dateGrouped = groupItemsByDate(data.planItems);
-          
-          // 默认选择第一天
+        // 默认选择第一天（仅在未选择时）
+        if (!activeDate) {
           const firstDate = Object.keys(dateGrouped)[0];
           setActiveDate(firstDate);
           setActiveDateItems(dateGrouped[firstDate]);
-          
-          // 获取天气信息
-          if (data.planItems[0]?.locationName) {
-            fetchWeather(data.planItems[0].locationName.split(' ')[0]); // 使用第一个地点名称的城市部分
-          }
-          
-          // 生成高德地图链接
-          generateAmapLink(data.title, data.planItems);
+        } else {
+          setActiveDateItems(dateGrouped[activeDate] || []);
         }
         
-      } catch (error) {
-        console.error('获取行程详情失败:', error);
-        message.error('加载行程详情失败');
-      } finally {
-        setLoading(false);
+        // 获取天气信息
+        if (data.planItems[0]?.locationName) {
+          fetchWeather(data.planItems[0].locationName.split(' ')[0]); // 使用第一个地点名称的城市部分
+        }
+        
+        // 生成高德地图链接
+        generateAmapLink(data.title, data.planItems);
       }
-    };
-    
+      
+    } catch (error) {
+      console.error('获取行程详情失败:', error);
+      message.error('加载行程详情失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 获取行程详情
+  useEffect(() => {
     fetchItinerary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -377,15 +615,77 @@ const ItineraryDetailPage = () => {
               <Card 
                 title={<span style={{ fontWeight: 700, fontSize: '1.1rem', color: '#1e293b' }}>行程安排</span>} 
                 extra={
-                  <Button 
-                    type="text" 
-                    icon={timelineExpanded ? <ShrinkOutlined /> : <ExpandAltOutlined />} 
-                    onClick={() => setTimelineExpanded(!timelineExpanded)}
-                    style={{ color: '#64748b', fontWeight: 500 }}
-                    className="hover-bg-slate-100"
-                  >
-                    {timelineExpanded ? '收起全部' : '展开全部'}
-                  </Button>
+                  <Space>
+                    <Button
+                      type="default"
+                      icon={<EnvironmentOutlined />}
+                      size="small"
+                      loading={routeLoading}
+                      onClick={async () => {
+                        try {
+                          setRouteLoading(true);
+                          const routeResult = await itineraryApi.getRouteForDate(id, activeDate);
+                          
+                          if (routeResult?.route?.paths?.[0]) {
+                            const path = routeResult.route.paths[0];
+                            const polyline = [];
+                            
+                            if (path.steps) {
+                              path.steps.forEach(step => {
+                                if (step.polyline) {
+                                  const points = step.polyline.split(';').map(point => {
+                                    const [lng, lat] = point.split(',');
+                                    return [parseFloat(lng), parseFloat(lat)];
+                                  }).filter(p => !isNaN(p[0]) && !isNaN(p[1]));
+                                  polyline.push(...points);
+                                }
+                              });
+                              
+                              if (polyline.length > 0) {
+                                setRouteData({
+                                  path: polyline,
+                                  distance: path.distance,
+                                  duration: path.duration
+                                });
+                                message.success('已重新计算当天路线');
+                              }
+                            }
+                          } else {
+                            message.warning('无法计算路线，可能是坐标点不足');
+                          }
+                        } catch (error) {
+                          console.error('重新计算路线失败:', error);
+                          message.error('重新计算路线失败');
+                        } finally {
+                          setRouteLoading(false);
+                        }
+                      }}
+                      style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}
+                    >
+                      重算路线
+                    </Button>
+                    <Button
+                      type="primary"
+                      icon={<PlusOutlined />}
+                      size="small"
+                      onClick={() => {
+                        addForm.resetFields();
+                        setAddModalVisible(true);
+                      }}
+                      style={{ borderRadius: 'var(--radius-md)', fontWeight: 500 }}
+                    >
+                      添加
+                    </Button>
+                    <Button 
+                      type="text" 
+                      icon={timelineExpanded ? <ShrinkOutlined /> : <ExpandAltOutlined />} 
+                      onClick={() => setTimelineExpanded(!timelineExpanded)}
+                      style={{ color: '#64748b', fontWeight: 500 }}
+                      className="hover-bg-slate-100"
+                    >
+                      {timelineExpanded ? '收起' : '展开'}
+                    </Button>
+                  </Space>
                 }
                 variant="borderless" 
                 className="timeline-card" 
@@ -499,136 +799,69 @@ const ItineraryDetailPage = () => {
     };
     
     return (
-      <Timeline
-        style={{ marginTop: 24, paddingLeft: 12 }}
-        items={dateItems.map(item => {
-          let timeStr = '未定时间';
-          if (item.startTime) {
-            try {
-              timeStr = format(parseISO(item.startTime), 'HH:mm');
-            } catch(e) {}
-          }
-          
-          const isSelected = selectedTimelineSpot?.id === item.id;
-          // 决定是否展示详情：如果全局展开，或者当前节点被选中，则展示详情
-          const showDetails = timelineExpanded || isSelected;
-          
-          return {
-            key: item.id,
-            dot: getItemIcon(item.itemType, isSelected),
-            children: (
-              <div 
-                className={`timeline-item-container ${isSelected ? 'selected' : ''}`}
-                style={{ 
-                  paddingBottom: 24, 
-                  cursor: 'pointer',
-                  padding: '16px 20px',
-                  borderRadius: '16px',
-                  marginLeft: 12,
-                  marginBottom: 16,
-                  backgroundColor: isSelected ? '#eef2ff' : '#ffffff',
-                  border: '1px solid',
-                  borderColor: isSelected ? '#c7d2fe' : 'transparent',
-                  boxShadow: isSelected ? '0 8px 16px -4px rgba(79, 70, 229, 0.15), 0 4px 6px -2px rgba(79, 70, 229, 0.05)' : 'none',
-                  position: 'relative',
-                  zIndex: isSelected ? 1 : 0
-                }}
-                onMouseEnter={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = '#f8fafc';
-                    e.currentTarget.style.borderColor = '#f1f5f9';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isSelected) {
-                    e.currentTarget.style.backgroundColor = '#ffffff';
-                    e.currentTarget.style.borderColor = 'transparent';
-                  }
-                }}
-                onClick={() => setSelectedTimelineSpot(item)}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', marginBottom: showDetails ? 12 : 0 }}>
-                  <div style={{ 
-                    fontWeight: 700, 
-                    color: isSelected ? '#4F46E5' : '#64748b', 
-                    marginRight: 16, 
-                    minWidth: '54px',
-                    fontSize: '0.95rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                    letterSpacing: '0.02em',
-                    transition: 'all 0.2s ease'
-                  }}>
-                    {timeStr}
-                  </div>
-                  <div style={{ 
-                    fontWeight: isSelected ? 700 : 600, 
-                    color: isSelected ? '#312e81' : '#374151', 
-                    flex: 1, 
-                    fontSize: '1.1rem',
-                    whiteSpace: showDetails ? 'normal' : 'nowrap', 
-                    overflow: showDetails ? 'visible' : 'hidden', 
-                    textOverflow: showDetails ? 'clip' : 'ellipsis',
-                    transition: 'all 0.2s ease'
-                  }}>
-                    {item.title}
-                  </div>
-                </div>
-                
-                {/* 折叠/展开区域 */}
-                <div style={{ 
-                  maxHeight: showDetails ? '800px' : '0', 
-                  overflow: 'hidden', 
-                  opacity: showDetails ? 1 : 0,
-                  transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)' 
-                }}>
-                  {item.description && (
-                    <div style={{ 
-                      padding: '12px 16px', 
-                      background: isSelected ? '#ffffff' : '#f8fafc', 
-                      borderRadius: 12, 
-                      marginBottom: 16,
-                      marginTop: 4,
-                      color: isSelected ? '#3730a3' : '#475569',
-                      fontSize: '0.95rem',
-                      lineHeight: 1.6,
-                      borderLeft: `4px solid ${isSelected ? '#4F46E5' : '#cbd5e1'}`
-                    }}>
-                      {item.description}
-                    </div>
-                  )}
-                  <Space wrap style={{ marginTop: 4, rowGap: 8 }}>
-                    {item.estimatedCost > 0 && (
-                      <Tag icon={<WalletOutlined />} style={{ borderRadius: 8, padding: '4px 10px', background: '#fff7e6', color: '#d46b08', borderColor: '#ffd591', fontSize: '0.85rem' }}>
-                        ¥{item.estimatedCost}
-                      </Tag>
-                    )}
-                    {item.durationMinutes > 0 && (
-                      <Tag icon={<ClockCircleOutlined />} style={{ borderRadius: 8, padding: '4px 10px', background: '#f0fdf4', color: '#047857', borderColor: '#a7f3d0', fontSize: '0.85rem' }}>
-                        {item.durationMinutes} 分钟
-                      </Tag>
-                    )}
-                    <Button 
-                      type="primary" 
-                      size="small"
-                      shape="round"
-                      icon={<CarOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation(); // 阻止事件冒泡，避免触发选中节点
-                        handleNavigate(item);
-                      }}
-                      style={{ marginLeft: 4, fontWeight: 500, boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)' }}
-                    >
-                      导航前往
-                    </Button>
-                  </Space>
-                </div>
-              </div>
-            )
-          };
-        })}
-      />
+      <DndContext 
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        <Timeline
+          style={{ marginTop: 24, paddingLeft: 12 }}
+        >
+          <SortableContext
+            items={dateItems.map(item => item.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            {dateItems.map(item => {
+              const isSelected = selectedTimelineSpot?.id === item.id;
+              const showDetails = timelineExpanded || isSelected;
+
+              return (
+                <SortableTimelineItem
+                  key={item.id}
+                  item={item}
+                  isSelected={isSelected}
+                  showDetails={showDetails}
+                  getItemIcon={getItemIcon}
+                  onSelect={setSelectedTimelineSpot}
+                  onNavigate={handleNavigate}
+                  onEdit={(item) => {
+                    setEditingItem(item);
+                    editForm.setFieldsValue({
+                      title: item.title,
+                      description: item.description,
+                      locationName: item.locationName,
+                      startTime: item.startTime ? dayjs(item.startTime) : null,
+                      durationMinutes: item.durationMinutes,
+                      estimatedCost: item.estimatedCost,
+                      itemType: item.itemType,
+                    });
+                    setEditModalVisible(true);
+                  }}
+                  onDelete={(item) => {
+                    modal.confirm({
+                      title: '删除行程项',
+                      icon: <ExclamationCircleOutlined style={{ color: '#DC2626' }} />,
+                      content: '确定要删除这个行程节点吗？此操作不可恢复。',
+                      okText: '删除',
+                      okType: 'danger',
+                      cancelText: '取消',
+                      onOk: async () => {
+                        try {
+                          await itineraryApi.deletePlanItem(id, item.id);
+                          message.success('删除成功');
+                          fetchItinerary();
+                        } catch (err) {
+                          message.error('删除失败');
+                        }
+                      }
+                    });
+                  }}
+                />
+              );
+            })}
+          </SortableContext>
+        </Timeline>
+      </DndContext>
     );
   };
   
@@ -896,7 +1129,7 @@ const ItineraryDetailPage = () => {
         <Row justify="space-between" align="middle" gutter={[16, 16]}>
           <Col xs={24} md={14}>
             <Title level={2} style={{ margin: 0, fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #4F46E5 0%, #ec4899 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px -4px rgba(79, 70, 229, 0.4)' }}>
+              <div style={{ width: 48, height: 48, borderRadius: 14, background: 'linear-gradient(135deg, #1a73e8 0%, #4285f4 100%)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 6px rgba(26, 115, 232, 0.2)' }}>
                 <EnvironmentOutlined style={{ fontSize: 24 }} /> 
               </div>
               {itinerary.title}
@@ -956,7 +1189,7 @@ const ItineraryDetailPage = () => {
                 <Progress 
                   percent={percent} 
                   status={progressStatus} 
-                  strokeColor={isOverBudget ? '#ef4444' : { '0%': '#4F46E5', '100%': '#ec4899' }}
+                  strokeColor={isOverBudget ? '#ea4335' : { '0%': '#1a73e8', '100%': '#4285f4' }}
                   strokeWidth={10}
                   trailColor="#f1f5f9"
                   showInfo={false}
@@ -1119,6 +1352,253 @@ const ItineraryDetailPage = () => {
             <div style={{ marginTop: 16 }}>正在生成分享码...</div>
           </div>
         )}
+      </Modal>
+
+      {/* 编辑行程项弹窗 */}
+      <Modal
+        title="编辑行程项"
+        open={editModalVisible}
+        onCancel={() => {
+          setEditModalVisible(false);
+          setEditingItem(null);
+        }}
+        onOk={async () => {
+          try {
+            const values = await editForm.validateFields();
+            setSubmittingEdit(true);
+            
+            const updateData = {
+              title: values.title,
+              description: values.description,
+              locationName: values.locationName,
+              durationMinutes: values.durationMinutes,
+              estimatedCost: values.estimatedCost,
+              itemType: values.itemType,
+            };
+
+            if (values.startTime) {
+              updateData.startTime = values.startTime.toISOString();
+            }
+
+            await itineraryApi.updatePlanItem(id, editingItem.id, updateData);
+            message.success('更新成功');
+            setEditModalVisible(false);
+            setEditingItem(null);
+            fetchItinerary();
+          } catch (err) {
+            console.error('Failed to update item:', err);
+            if (!err.errorFields) { // Not a form validation error
+              message.error('更新失败');
+            }
+          } finally {
+            setSubmittingEdit(false);
+          }
+        }}
+        confirmLoading={submittingEdit}
+      >
+        <Form form={editForm} layout="vertical">
+          <Form.Item
+            name="title"
+            label="标题"
+            rules={[{ required: true, message: '请输入标题' }]}
+          >
+            <Input placeholder="如：天安门广场、午餐：烤鸭" />
+          </Form.Item>
+          
+          <Form.Item
+            name="locationName"
+            label="地点名称"
+            rules={[{ required: true, message: '请输入地点名称' }]}
+          >
+            <Input placeholder="如：天安门广场" />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="startTime"
+                label="开始时间"
+                rules={[{ required: true, message: '请选择开始时间' }]}
+              >
+                <TimePicker format="HH:mm" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="durationMinutes"
+                label="游玩时长 (分钟)"
+                rules={[{ required: true, message: '请输入游玩时长' }]}
+              >
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="estimatedCost"
+                label="预估花费 (元)"
+              >
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="itemType"
+                label="类型"
+              >
+                <Select>
+                  <Select.Option value="activity">景点/活动</Select.Option>
+                  <Select.Option value="food">餐饮</Select.Option>
+                  <Select.Option value="accommodation">住宿</Select.Option>
+                  <Select.Option value="transport">交通</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="description"
+            label="备注/描述"
+          >
+            <Input.TextArea rows={3} placeholder="添加一些备注..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 添加行程项弹窗 */}
+      <Modal
+        title={`添加行程项 (${activeDate})`}
+        open={addModalVisible}
+        onCancel={() => {
+          setAddModalVisible(false);
+          addForm.resetFields();
+        }}
+        onOk={async () => {
+          try {
+            const values = await addForm.validateFields();
+            setSubmittingAdd(true);
+            
+            // 获取所选日期，默认为当前激活的日期
+            const itemDate = activeDate;
+            
+            // 构造完整时间
+            let startTimeStr = null;
+            if (values.startTime) {
+              // 组合 activeDate 和 startTime
+              const timeObj = values.startTime.toDate();
+              const dateObj = new Date(itemDate);
+              dateObj.setHours(timeObj.getHours(), timeObj.getMinutes(), 0, 0);
+              startTimeStr = dateObj.toISOString();
+            } else {
+              // 默认使用当天中午12点
+              const dateObj = new Date(itemDate);
+              dateObj.setHours(12, 0, 0, 0);
+              startTimeStr = dateObj.toISOString();
+            }
+
+            // 这里默认将其添加到当天行程的最后
+            // 后端其实不需要 orderIndex，因为后端的逻辑可能只接受一个 item，不一定能自动排列
+            // 或者在后端的 addPlanItem 中自动排到最后
+            const createData = {
+              title: values.title,
+              description: values.description || '',
+              planDate: itemDate,
+              startTime: startTimeStr,
+              durationMinutes: values.durationMinutes || 60,
+              itemType: values.itemType || 'activity',
+              locationName: values.locationName,
+              estimatedCost: values.estimatedCost || 0,
+              latitude: 0,  // 先默认填 0，前端不强求经纬度，后续如果有需要可以加搜索
+              longitude: 0,
+            };
+
+            await itineraryApi.addPlanItem(id, createData);
+            message.success('添加成功');
+            setAddModalVisible(false);
+            addForm.resetFields();
+            fetchItinerary();
+          } catch (err) {
+            console.error('Failed to add item:', err);
+            if (!err.errorFields) {
+              message.error('添加失败');
+            }
+          } finally {
+            setSubmittingAdd(false);
+          }
+        }}
+        confirmLoading={submittingAdd}
+      >
+        <Form form={addForm} layout="vertical" initialValues={{ durationMinutes: 60, estimatedCost: 0, itemType: 'activity' }}>
+          <Form.Item
+            name="title"
+            label="标题"
+            rules={[{ required: true, message: '请输入标题' }]}
+          >
+            <Input placeholder="如：天安门广场、午餐：烤鸭" />
+          </Form.Item>
+          
+          <Form.Item
+            name="locationName"
+            label="地点名称"
+            rules={[{ required: true, message: '请输入地点名称' }]}
+          >
+            <Input placeholder="如：天安门广场" />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="startTime"
+                label="开始时间"
+                rules={[{ required: true, message: '请选择开始时间' }]}
+              >
+                <TimePicker format="HH:mm" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="durationMinutes"
+                label="游玩时长 (分钟)"
+                rules={[{ required: true, message: '请输入游玩时长' }]}
+              >
+                <InputNumber min={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="estimatedCost"
+                label="预估花费 (元)"
+              >
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="itemType"
+                label="类型"
+              >
+                <Select>
+                  <Select.Option value="activity">景点/活动</Select.Option>
+                  <Select.Option value="food">餐饮</Select.Option>
+                  <Select.Option value="accommodation">住宿</Select.Option>
+                  <Select.Option value="transport">交通</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="description"
+            label="备注/描述"
+          >
+            <Input.TextArea rows={3} placeholder="添加一些备注..." />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

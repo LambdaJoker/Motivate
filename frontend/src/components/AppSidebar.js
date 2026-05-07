@@ -68,10 +68,10 @@ const AppSidebar = () => {
       breakpoint="lg"
       collapsedWidth="0"
       style={{ 
-        borderRight: '1px solid #e5e7eb',
+        borderRight: 'none',
         height: 'calc(100vh - 64px)',
         overflowY: 'auto',
-        background: '#f8fafc',
+        background: '#f8f9fa',
         position: 'sticky',
         top: 64,
         zIndex: 10
@@ -86,17 +86,18 @@ const AppSidebar = () => {
           onClick={() => navigate('/generate')}
           style={{ 
             marginBottom: 24, 
-            borderRadius: 12,
-            height: 52,
+            borderRadius: 24,
+            height: 48,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'flex-start',
             paddingLeft: 20,
-            fontWeight: 600,
-            fontSize: '1rem',
-            background: 'var(--primary-color)',
+            fontWeight: 500,
+            fontSize: '0.95rem',
+            background: '#ffffff',
+            color: '#202124',
             border: 'none',
-            boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)'
+            boxShadow: '0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15)'
           }}
         >
           新建行程
@@ -126,46 +127,37 @@ const AppSidebar = () => {
                     onClick={() => navigate(`/itinerary/${item.id}`)}
                     style={{
                       padding: '12px 16px',
-                      borderRadius: '0 8px 8px 0',
+                      borderRadius: '0 24px 24px 0',
                       cursor: 'pointer',
-                      background: isActive ? '#f3f4f6' : 'transparent',
+                      background: isActive ? '#e8f0fe' : 'transparent',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
                       transition: 'all 0.2s ease',
-                      borderLeft: isActive ? '4px solid var(--primary-color)' : '4px solid transparent',
-                      borderTop: '1px solid transparent',
-                      borderRight: '1px solid transparent',
-                      borderBottom: '1px solid transparent',
-                      marginBottom: 4
+                      borderLeft: 'none',
+                      borderTop: 'none',
+                      borderRight: 'none',
+                      borderBottom: 'none',
+                      marginBottom: 4,
+                      marginRight: 8
                     }}
                     onMouseEnter={(e) => {
                       if (!isActive) {
-                        e.currentTarget.style.background = '#ffffff';
-                        e.currentTarget.style.borderTop = '1px solid #e5e7eb';
-                        e.currentTarget.style.borderRight = '1px solid #e5e7eb';
-                        e.currentTarget.style.borderBottom = '1px solid #e5e7eb';
-                        e.currentTarget.style.borderLeft = '4px solid #e5e7eb';
-                        e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(0, 0, 0, 0.05)';
+                        e.currentTarget.style.background = '#f1f3f4';
                       }
                     }}
                     onMouseLeave={(e) => {
                       if (!isActive) {
                         e.currentTarget.style.background = 'transparent';
-                        e.currentTarget.style.borderTop = '1px solid transparent';
-                        e.currentTarget.style.borderRight = '1px solid transparent';
-                        e.currentTarget.style.borderBottom = '1px solid transparent';
-                        e.currentTarget.style.borderLeft = '4px solid transparent';
-                        e.currentTarget.style.boxShadow = 'none';
                       }
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', overflow: 'hidden' }}>
-                      <CompassOutlined style={{ color: isActive ? '#111827' : '#9ca3af', marginRight: 12, fontSize: 18 }} />
+                      <CompassOutlined style={{ color: isActive ? '#1a73e8' : '#5f6368', marginRight: 12, fontSize: 18 }} />
                       <div style={{ overflow: 'hidden' }}>
                         <div style={{ 
                           fontWeight: isActive ? 600 : 500, 
-                          color: isActive ? '#111827' : '#4b5563',
+                          color: isActive ? '#1a73e8' : '#202124',
                           whiteSpace: 'nowrap',
                           textOverflow: 'ellipsis',
                           overflow: 'hidden',

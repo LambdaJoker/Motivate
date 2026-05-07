@@ -49,14 +49,14 @@ const AppHeader = ({ isAuthenticated, setIsAuthenticated }) => {
   const mainMenuItems = [];
 
   return (
-    <Header className="app-header" style={{ padding: 0, background: 'rgba(255, 255, 255, 0.85)', backdropFilter: 'blur(8px)', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid #e5e7eb' }}>
+    <Header className="app-header" style={{ padding: 0, background: '#ffffff', position: 'sticky', top: 0, zIndex: 1000, borderBottom: '1px solid #dadce0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: 1200, margin: '0 auto', padding: '0 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary-color)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12, boxShadow: '0 4px 10px rgba(79, 70, 229, 0.2)' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--primary-color)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
             <CompassOutlined style={{ fontSize: 18 }} />
           </div>
           <Link to="/" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
-            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.025em', color: '#111827' }}>TripAgent</h1>
+            <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, letterSpacing: '-0.025em', color: '#202124' }}>TripAgent</h1>
           </Link>
         </div>
         

@@ -92,6 +92,43 @@ export class ItineraryController {
     return this.itineraryService.addPlanItem(itineraryId, user.id, createPlanItemDto);
   }
 
+  // Update a PlanItem
+  @Post('/:itineraryId/plan-items/:itemId/update')
+  @Public()
+  updatePlanItem(
+    @Param('itineraryId', ParseIntPipe) itineraryId: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @GetUser() user: User,
+    @Body() updateData: Partial<CreatePlanItemDto>,
+  ) {
+    const userId = user?.id || 1;
+    return this.itineraryService.updatePlanItem(itineraryId, itemId, userId, updateData);
+  }
+
+  // Reorder PlanItems for a date
+  @Post('/:itineraryId/plan-items/reorder')
+  @Public()
+  reorderPlanItems(
+    @Param('itineraryId', ParseIntPipe) itineraryId: number,
+    @GetUser() user: User,
+    @Body() body: { items: { id: number, orderIndex: number }[] },
+  ) {
+    const userId = user?.id || 1;
+    return this.itineraryService.reorderPlanItems(itineraryId, userId, body.items);
+  }
+
+  // Delete a PlanItem
+  @Post('/:itineraryId/plan-items/:itemId/delete')
+  @Public()
+  deletePlanItem(
+    @Param('itineraryId', ParseIntPipe) itineraryId: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @GetUser() user: User,
+  ) {
+    const userId = user?.id || 1;
+    return this.itineraryService.deletePlanItem(itineraryId, itemId, userId);
+  }
+
   // Get all PlanItems for a specific date in an Itinerary
   @Get('/:itineraryId/plan-items')
   @Public() // 添加Public装饰器，临时支持免登录访问

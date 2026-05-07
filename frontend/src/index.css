@@ -1,29 +1,29 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --primary-color: #4F46E5;
-  --primary-hover: #4338CA;
+  --primary-color: #1a73e8;
+  --primary-hover: #174ea6;
   --bg-color: #ffffff;
   --card-bg: #FFFFFF;
-  --text-main: #111827;
-  --text-secondary: #4B5563;
-  --border-color: #E5E7EB;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05);
-  --radius-md: 0.5rem;
+  --text-main: #202124;
+  --text-secondary: #5f6368;
+  --border-color: #dadce0;
+  --shadow-sm: 0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  --shadow-md: 0 4px 6px -1px rgba(60, 64, 67, 0.3), 0 2px 4px -2px rgba(60, 64, 67, 0.15);
+  --shadow-lg: 0 10px 15px -3px rgba(60, 64, 67, 0.3), 0 4px 6px -4px rgba(60, 64, 67, 0.15);
+  --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.5rem;
 }
 
 body {
   margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+  font-family: 'Google Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f8fafc;
+  background-color: #f8f9fa;
   color: var(--text-main);
 }
 

@@ -44,8 +44,13 @@ export class GenerateItineraryDto {
 
   @IsString()
   @IsOptional()
-  @IsIn(['driving', 'walking', 'bicycling', 'transit'])
+  @IsIn(['driving', 'walking', 'bicycling', 'transit', 'taxi'])
   transportMode?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['train', 'high_speed_train', 'plane', 'driving'])
+  toDestinationTransportMode?: string;
 
   @IsOptional()
   travelPreference?: string | string[];

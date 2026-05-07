@@ -24,6 +24,19 @@ export class ItineraryService {
   
     // 使用 Prisma 事务来确保行程和行程项的原子性创建
     return this.prisma.$transaction(async (prisma) => {
+      // Create user if not exists, since it's a Public endpoint fallback to 1 but the database might be empty
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) {
+        await prisma.user.create({
+          data: {
+            id: userId,
+            username: `user_${userId}`,
+            email: `user_${userId}@example.com`,
+            passwordHash: 'dummy_hash',
+          }
+        });
+      }
+
       const itinerary = await prisma.itinerary.create({
         data: {
           title,
@@ -115,7 +128,20 @@ export class ItineraryService {
       ],
     });
     
-    return { ...itinerary, planItems };
+    let budget = 0;
+    if (itinerary.generationParams) {
+      try {
+        const params = JSON.parse(itinerary.generationParams);
+        budget = params.budget || 0;
+      } catch (e) {}
+    }
+    
+    return { 
+      ...itinerary, 
+      planItems,
+      estimatedCost: itinerary.totalEstimatedCost,
+      budget
+    };
   }
 
   async addPlanItem(itineraryId: number, userId: number, createPlanItemDto: CreatePlanItemDto): Promise<PlanItem> {
@@ -163,6 +189,65 @@ export class ItineraryService {
     });
   }
 
+  async updatePlanItem(itineraryId: number, itemId: number, userId: number, updateData: Partial<CreatePlanItemDto>): Promise<PlanItem> {
+    const checkAuth = userId !== 1;
+    await this.getItineraryById(itineraryId, userId, checkAuth);
+
+    const existingItem = await this.prisma.planItem.findUnique({
+      where: { id: itemId }
+    });
+
+    if (!existingItem || existingItem.itineraryId !== itineraryId) {
+      throw new BadRequestException('Plan item not found or does not belong to this itinerary');
+    }
+
+    const dataToUpdate: any = { ...updateData };
+    if (updateData.planDate) dataToUpdate.planDate = new Date(updateData.planDate);
+    if (updateData.startTime) dataToUpdate.startTime = new Date(updateData.startTime);
+    if (updateData.latitude !== undefined) dataToUpdate.latitude = Number(updateData.latitude);
+    if (updateData.longitude !== undefined) dataToUpdate.longitude = Number(updateData.longitude);
+
+    return this.prisma.planItem.update({
+      where: { id: itemId },
+      data: dataToUpdate,
+    });
+  }
+
+  async reorderPlanItems(itineraryId: number, userId: number, items: { id: number, orderIndex: number }[]): Promise<{ success: boolean }> {
+    const checkAuth = userId !== 1;
+    await this.getItineraryById(itineraryId, userId, checkAuth);
+
+    await this.prisma.$transaction(
+      items.map(item =>
+        this.prisma.planItem.update({
+          where: { id: item.id },
+          data: { orderIndex: item.orderIndex }
+        })
+      )
+    );
+
+    return { success: true };
+  }
+
+  async deletePlanItem(itineraryId: number, itemId: number, userId: number): Promise<{ success: boolean }> {
+    const checkAuth = userId !== 1;
+    await this.getItineraryById(itineraryId, userId, checkAuth);
+
+    const existingItem = await this.prisma.planItem.findUnique({
+      where: { id: itemId }
+    });
+
+    if (!existingItem || existingItem.itineraryId !== itineraryId) {
+      throw new BadRequestException('Plan item not found or does not belong to this itinerary');
+    }
+
+    await this.prisma.planItem.delete({
+      where: { id: itemId }
+    });
+
+    return { success: true };
+  }
+
   async getRouteForDate(itineraryId: number, userId: number, planDate: string) {
     if (!planDate) {
       throw new BadRequestException('planDate query parameter is required.');
@@ -182,7 +267,7 @@ export class ItineraryService {
   }
 
   async generateItinerary(generateDto: GenerateItineraryDto, userId: number, existingItineraryId?: number): Promise<Itinerary> {
-    const { title, description, startDate, durationDays, destination, origin, mustVisitSpots, optionalSpots, transportMode, budget, travelPreference } = generateDto;
+    const { title, description, startDate, durationDays, destination, origin, mustVisitSpots, optionalSpots, transportMode, toDestinationTransportMode, budget, travelPreference } = generateDto;
     
     // 获取旅行偏好描述
     const prefDescription = travelPreference ? getPreferenceDescription(travelPreference) : '无特别偏好';
@@ -199,6 +284,7 @@ export class ItineraryService {
       budget: budget || 0,
       mustVisitSpots: [...(mustVisitSpots || []), ...(optionalSpots || [])],
       transportMode: transportMode || 'driving',
+      toDestinationTransportMode: toDestinationTransportMode || 'train',
       travelPreference: prefDescription,
       // 把完整的 title 等信息作为上下文传过去（可以通过目的地拼接等方式隐式传递给 prompt）
       fullPromptContext: itineraryPrompt

@@ -43,16 +43,16 @@ const LoginPage = ({ setIsAuthenticated }) => {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8fafc' }}>
-      <Card style={{ width: 420, borderRadius: 24, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)', border: '1px solid #f3f4f6' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', background: '#f8f9fa' }}>
+      <Card style={{ width: 420, borderRadius: 24, boxShadow: '0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15)', border: '1px solid #dadce0' }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--primary-color)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 16px -4px rgba(79, 70, 229, 0.3)', marginBottom: 16 }}>
-            <span style={{ fontSize: 24, fontWeight: 800 }}>T</span>
+          <div style={{ width: 48, height: 48, borderRadius: 14, background: 'var(--primary-color)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'none', marginBottom: 16 }}>
+            <span style={{ fontSize: 24, fontWeight: 600 }}>T</span>
           </div>
-          <Title level={2} style={{ margin: 0, fontWeight: 800, color: '#111827', letterSpacing: '-0.025em' }}>
+          <Title level={2} style={{ margin: 0, fontWeight: 600, color: '#202124', letterSpacing: '-0.025em' }}>
             欢迎回来
           </Title>
-          <div style={{ color: '#6b7280', marginTop: 8 }}>登录 TripAgent 规划下一次旅程</div>
+          <div style={{ color: '#5f6368', marginTop: 8 }}>登录 TripAgent 规划下一次旅程</div>
         </div>
         <Form
           name="login"
@@ -75,12 +75,12 @@ const LoginPage = ({ setIsAuthenticated }) => {
           </Form.Item>
 
           <Form.Item style={{ marginTop: 32 }}>
-            <Button type="primary" htmlType="submit" loading={loading} style={{ width: '100%', height: 48, borderRadius: 12, fontWeight: 600, background: 'var(--primary-color)', border: 'none', boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)' }}>
+            <Button type="primary" htmlType="submit" loading={loading} style={{ width: '100%', height: 48, borderRadius: 24, fontWeight: 500, background: 'var(--primary-color)', border: 'none', boxShadow: '0 1px 2px 0 rgba(60, 64, 67, 0.3)' }}>
               登录
             </Button>
           </Form.Item>
           
-          <div style={{ textAlign: 'center', color: '#6b7280' }}>
+          <div style={{ textAlign: 'center', color: '#5f6368' }}>
             还没有账户？ <Link to="/register" style={{ color: 'var(--primary-color)', fontWeight: 500 }}>立即注册</Link>
           </div>
         </Form>

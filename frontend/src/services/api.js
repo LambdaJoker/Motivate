@@ -65,6 +65,15 @@ const itineraryApi = {
   
   // 添加行程项
   addPlanItem: (itineraryId, data) => api.post(`/itineraries/${itineraryId}/plan-items`, data),
+
+  // 更新行程项
+  updatePlanItem: (itineraryId, itemId, data) => api.post(`/itineraries/${itineraryId}/plan-items/${itemId}/update`, data),
+
+  // 排序行程项
+  reorderPlanItems: (itineraryId, items) => api.post(`/itineraries/${itineraryId}/plan-items/reorder`, { items }),
+
+  // 删除行程项
+  deletePlanItem: (itineraryId, itemId) => api.post(`/itineraries/${itineraryId}/plan-items/${itemId}/delete`),
   
   // 获取特定日期的行程项
   getPlanItemsForDate: (itineraryId, date) => api.get(`/itineraries/${itineraryId}/plan-items?planDate=${date}`),

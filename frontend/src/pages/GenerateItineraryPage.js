@@ -126,7 +126,7 @@ const GenerateItineraryPage = () => {
         styles={{ body: { padding: '48px 0' } }}
       >
         <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <Title level={1} style={{ margin: '0 0 16px 0', fontWeight: 800, letterSpacing: '-0.025em', fontSize: '3rem', color: '#111827' }}>
+          <Title level={1} style={{ margin: '0 0 16px 0', fontWeight: 600, letterSpacing: '-0.025em', fontSize: '3rem', color: '#202124' }}>
             Where to next?
           </Title>
           <div style={{ color: '#6b7280', fontSize: '1.125rem', fontWeight: 500 }}>
@@ -140,7 +140,8 @@ const GenerateItineraryPage = () => {
             onFinish={onFinish}
             requiredMark="optional"
             initialValues={{
-              transportMode: 'driving',
+              toDestinationTransportMode: 'high_speed_train',
+              transportMode: 'transit',
               durationDays: 3,
               travelPreference: [],
               spots: []
@@ -168,6 +169,7 @@ const GenerateItineraryPage = () => {
                 name="origin"
                 style={{ width: '100%' }}
                 rules={[{ required: false }]}
+                tooltip="填写出发地后，AI将为您规划从出发地到目的地的城际交通及时间花费"
               >
                 <Input placeholder="选填" size="large" style={{ borderRadius: 12, background: '#f9fafb' }} prefix={<EnvironmentOutlined style={{ color: '#9ca3af' }} />} />
               </Form.Item>
@@ -226,19 +228,48 @@ const GenerateItineraryPage = () => {
             <Row gutter={16}>
               <Col span={12}>
                 <Form.Item
-                  label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>出行方式</span>}
+                  noStyle
+                  shouldUpdate={(prevValues, currentValues) => prevValues.origin !== currentValues.origin}
+                >
+                  {({ getFieldValue }) => {
+                    const hasOrigin = !!getFieldValue('origin');
+                    return (
+                      <Form.Item
+                        label={<span style={{ fontWeight: 600, color: hasOrigin ? '#111827' : '#9ca3af', fontSize: '1.05rem' }}>前往目的地交通</span>}
+                        name="toDestinationTransportMode"
+                        rules={[{ required: true, message: '请选择前往目的地的交通方式' }]}
+                        tooltip="填写出发地后，将根据此选项规划城际交通"
+                      >
+                        <Select size="large" style={{ borderRadius: 12 }} disabled={!hasOrigin}>
+                          <Option value="plane">✈️ 飞机</Option>
+                          <Option value="high_speed_train">🚄 高铁</Option>
+                          <Option value="train">🚆 火车</Option>
+                          <Option value="driving">🚗 自驾</Option>
+                        </Select>
+                      </Form.Item>
+                    );
+                  }}
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>当地出行方式</span>}
                   name="transportMode"
-                  rules={[{ required: true, message: '请选择出行方式' }]}
+                  rules={[{ required: true, message: '请选择当地出行方式' }]}
                 >
                   <Select size="large" style={{ borderRadius: 12 }}>
-                    <Option value="driving">🚗 自驾 / 打车</Option>
+                    <Option value="driving">🚗 自驾</Option>
+                    <Option value="taxi">🚕 打车</Option>
                     <Option value="transit">🚇 公共交通</Option>
                     <Option value="walking">🚶 步行</Option>
                     <Option value="bicycling">🚲 骑行</Option>
                   </Select>
                 </Form.Item>
               </Col>
-              <Col span={12}>
+            </Row>
+            
+            <Row gutter={16}>
+              <Col span={24}>
                 <Form.Item
                   label={<span style={{ fontWeight: 600, color: '#111827', fontSize: '1.05rem' }}>偏好设置</span>}
                   name="travelPreference"
@@ -388,11 +419,11 @@ const GenerateItineraryPage = () => {
                   height: 56, 
                   fontSize: 18, 
                   marginTop: loading ? 8 : 24,
-                  fontWeight: 600,
-                  borderRadius: 16,
+                  fontWeight: 500,
+                  borderRadius: 28,
                   background: 'var(--primary-color)',
                   border: 'none',
-                  boxShadow: '0 4px 12px rgba(79, 70, 229, 0.2)'
+                  boxShadow: '0 1px 2px 0 rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15)'
                 }}
               >
                 {loading ? 'AI 正在努力规划中...' : '✨ 立即生成专属行程'}
